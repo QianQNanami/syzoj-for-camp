@@ -63,6 +63,13 @@ export default class User extends Model {
   @TypeORM.Column({ nullable: true, type: "integer" })
   register_time: number;
 
+  @TypeORM.Column({
+    type: "enum",
+    enum: ["student", "teacher", "lecturer"],
+    nullable: true
+  })
+  user_type: "student" | "teacher" | "lecturer" | "admin";
+
   static async fromEmail(email): Promise<User> {
     return User.findOne({
       where: {
