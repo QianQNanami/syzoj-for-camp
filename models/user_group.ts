@@ -9,6 +9,6 @@ export default class UserGroup extends Model {
   @TypeORM.PrimaryColumn({ type: "integer" })
   user_id: number;
   
-  @TypeORM.PrimaryColumn({ type: "integer" })
-  group_id: number;
+  @TypeORM.PrimaryColumn({ type: "varchar", length: 80 })
+  group: string;
 }

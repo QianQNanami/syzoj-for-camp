@@ -6,6 +6,8 @@ declare var syzoj: any;
 import JudgeState from "./judge_state";
 import UserPrivilege from "./user_privilege";
 import Article from "./article";
+import UserTeacher from "./user-teacher";
+import UserGroup from "./user_group";
 
 @TypeORM.Entity()
 export default class User extends Model {
@@ -211,4 +213,72 @@ export default class User extends Model {
 
     return null;
   }
+
+  async getTeacher() {
+    if (this.user_type == "student") {
+      let teacher = await UserTeacher.find({
+        where: {
+          user_id: this.id
+        },
+        order: {
+          teacher_id: 'ASC'
+        }
+      });
+      return teacher;
+    }
+    else return null;
+  }
+
+  async getStudents() {
+    if (this.user_type == "teacher") {
+      let students = await UserTeacher.find({
+        where: {
+          teacher_id: this.id
+        },
+        order: {
+          user_id: 'ASC'
+        }
+      });
+      return students;
+    }
+    else return null;
+  }
+
+  async getGroup() {
+    let group = await UserGroup.find({
+      where: {
+        user_id: this.id
+      },
+      order: {
+        group_id: 'ASC'
+      }
+    });
+    return group;
+  }
+
+  async setGroup(newGroup) {
+    let oldGroup = await this.getGroup();
+
+    let delGroup = oldGroup.filter(x => !newGroup.includes(x));
+    let addGroup = newGroup.filter(x => !oldGroup.includes(x));
+
+    for (let group of delGroup) {
+      let obj = await UserGroup.findOne({ where: {
+        user_id: this.id,
+        group: group
+      } });
+
+      await obj.destroy();
+    }
+
+    for (let group of addGroup) {
+      let obj = await UserGroup.create({
+        user_id: this.id,
+        group: group
+      });
+
+      await obj.save();
+    }
+  }
+
 }
