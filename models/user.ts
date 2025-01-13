@@ -7,7 +7,7 @@ import JudgeState from "./judge_state";
 import UserPrivilege from "./user_privilege";
 import Article from "./article";
 import UserTeacher from "./user-teacher";
-import UserGroup from "./user_group";
+import UserGroup from "./user-group";
 
 @TypeORM.Entity()
 export default class User extends Model {
@@ -67,7 +67,7 @@ export default class User extends Model {
 
   @TypeORM.Column({
     type: "enum",
-    enum: ["student", "teacher", "lecturer"],
+    enum: ["student", "teacher", "lecturer", "admin"],
     nullable: true
   })
   user_type: "student" | "teacher" | "lecturer" | "admin";
@@ -244,6 +244,33 @@ export default class User extends Model {
     else return null;
   }
 
+  async setTeacher(newTeacher) {
+    if (this.user_type == "student") {
+      let oldTeacher = await this.getTeacher();
+
+      let delTeacher = oldTeacher.filter(x => !newTeacher.includes(x));
+      let addTeacher = newTeacher.filter(x => !oldTeacher.includes(x));
+
+      for (let teacher of delTeacher) {
+        let obj = await UserTeacher.findOne({ where: {
+          user_id: this.id,
+          teacher: teacher
+        } });
+
+        await obj.destroy();
+      }
+
+      for (let teacher of addTeacher) {
+        let obj = await UserTeacher.create({
+          user_id: this.id,
+          teacher: teacher
+        });
+
+        await obj.save();
+      }
+    }
+  }
+
   async getGroup() {
     let group = await UserGroup.find({
       where: {
@@ -265,7 +292,7 @@ export default class User extends Model {
     for (let group of delGroup) {
       let obj = await UserGroup.findOne({ where: {
         user_id: this.id,
-        group: group
+        group_id: group
       } });
 
       await obj.destroy();
@@ -274,7 +301,7 @@ export default class User extends Model {
     for (let group of addGroup) {
       let obj = await UserGroup.create({
         user_id: this.id,
-        group: group
+        group_id: group
       });
 
       await obj.save();
