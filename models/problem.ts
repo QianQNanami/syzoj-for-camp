@@ -150,15 +150,14 @@ export default class Problem extends Model {
 
   async isAllowedViewBy(user, pid) {
     if(!user) return false;
-    let allowedGroup = await ProblemGroup.findOne({
+    let allowedGroup = await ProblemGroup.find({
         where: {
-          user_id: user.id,
           problem_id: pid
         }
     });
     if(!allowedGroup) return false;
     for (let group of allowedGroup) {
-      let hasgroup = await UserGroup.findOne({
+      let hasgroup = await UserGroup.find({
         where: {
           user_id: user.id,
           group_id: group.group_id
