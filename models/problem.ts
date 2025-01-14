@@ -11,6 +11,7 @@ import ProblemTag from "./problem_tag";
 import ProblemTagMap from "./problem_tag_map";
 import SubmissionStatistics, { StatisticsType } from "./submission_statistics";
 import ProblemGroup from "./problem-group";
+import { UserType } from "./user";
 
 import * as fs from "fs-extra";
 import * as path from "path";

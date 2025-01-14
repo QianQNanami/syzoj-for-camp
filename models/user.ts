@@ -9,6 +9,13 @@ import Article from "./article";
 import UserTeacher from "./user-teacher";
 import UserGroup from "./user-group";
 
+export enum UserType {
+    Student = "student",
+    Teacher = "teacher",
+    Lecturer = "lecturer",
+    Admin = "admin"
+}
+
 @TypeORM.Entity()
 export default class User extends Model {
   static cache = true;
@@ -65,12 +72,16 @@ export default class User extends Model {
   @TypeORM.Column({ nullable: true, type: "integer" })
   register_time: number;
 
-  @TypeORM.Column({
-    type: "enum",
-    enum: ["student", "teacher", "lecturer", "admin"],
-    nullable: true
+  @TypeORM.Column({ nullable: true, type: "enum",
+    enum: UserType, default: UserType.Student
   })
-  user_type: "student" | "teacher" | "lecturer" | "admin";
+  user_type: UserType;
+
+  @TypeORM.Column({ nullable: true, type: "varcher", length: 120 })
+  school: string;
+
+  @TypeORM.Column({ nullable: true, type: "varcher", length: 60 })
+  realname: string;
 
   static async fromEmail(email): Promise<User> {
     return User.findOne({
