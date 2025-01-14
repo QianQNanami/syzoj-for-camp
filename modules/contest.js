@@ -135,7 +135,7 @@ app.get('/contest/:id', async (req, res) => {
     let contest = await Contest.findById(contest_id);
     if (!contest) throw new ErrorMessage('无此比赛。');
 
-    if (!await Contest.isAllowedViewBy(curUser, contest_id)) {
+    if (!await contest.isAllowedViewBy(res.locals.user, contest_id)) {
         throw new ErrorMessage('您没有权限访问此比赛。');
     }
 
