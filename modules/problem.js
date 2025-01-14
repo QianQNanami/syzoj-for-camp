@@ -20,16 +20,16 @@ app.get('/problems', async (req, res) => {
       throw new ErrorMessage('错误的排序参数。');
     }
 
-    let query = Problem.createQueryBuilder('problem');
+    let query = Problem.createQueryBuilder();
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
       if (res.locals.user) {
         query.where('is_public = 1')
-             .orWhere('user_id = :user_id', { user_id: res.locals.user.id })
-             .orWhere(qb => {
-              qb.innerJoin('problem_group', 'pg', 'pg.problem_id = problem.id')
-                .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
-                .where('ug.user_id = :user_id', { user_id: res.locals.user.id });
-            });
+             .andWhere(qb => {
+               qb.innerJoin('problem_group', 'pg', 'pg.problem_id = id')
+                 .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
+                 .where('ug.user_id = :user_id', { user_id: res.locals.user.id });
+             })
+             .orWhere('user_id = :user_id', { user_id: res.locals.user.id });
       } else {
         query.where('is_public = 1');
       }
