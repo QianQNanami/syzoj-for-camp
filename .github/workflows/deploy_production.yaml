@@ -13,7 +13,6 @@ jobs:
       - name: Change Working Directory
         run: |
           mkdir -p syzoj-web
-          cd syzoj-web
 
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -27,10 +26,12 @@ jobs:
 
       - name: Install and Build
         run: |
+          cd syzoj-web
           yarn install
 
       - name: Archive Build
-        run: tar --exclude='./node_modules' --exclude='./app.tar.gz' --exclude='./.git' -czf app.tar.gz . 
+        run: |
+          tar --exclude='syzoj-web/node_modules' --exclude='syzoj-web/app.tar.gz' --exclude='syzoj-web/.git' -czf app.tar.gz syzoj-web/*
 
       - name: Deploy to Server
         env:
