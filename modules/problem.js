@@ -23,7 +23,7 @@ app.get('/problems', async (req, res) => {
     let query = Problem.createQueryBuilder();
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
       if (res.locals.user) {
-        query.select('Problem.*')
+        query.select(['Problem.*'])
              .where('is_public = 1')
              .andWhere(qb => {
                qb.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
