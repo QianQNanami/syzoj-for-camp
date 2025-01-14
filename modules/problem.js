@@ -36,8 +36,8 @@ app.get('/problems', async (req, res) => {
       query.orderBy(sort, order.toUpperCase());
     }
 
-    let problemall = await Problem.queryPage(0, query);
-    problemall = await Promise.all(problems.filter(async problem => {
+    let problemall = await Problem.queryPage(null, query);
+    problemall = await Promise.all(problemall.filter(async problem => {
       return await problem.isAllowedViewBy(res.locals.user, problem.id);
     }));
 
