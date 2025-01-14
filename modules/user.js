@@ -56,13 +56,16 @@ app.get('/login', async (req, res) => {
 
 // Sign up
 app.get('/sign_up', async (req, res) => {
-  if (res.locals.user) {
-    res.render('error', {
-      err: new ErrorMessage('您已经登录了，请先注销。', { '注销': syzoj.utils.makeUrl(['logout'], { 'url': req.originalUrl }) })
-    });
-  } else {
-    res.render('sign_up');
-  }
+  res.render('error', {
+    err: new ErrorMessage('不允许注册。请联系管理员。')
+  });
+//   if (res.locals.user) {
+//     res.render('error', {
+//       err: new ErrorMessage('您已经登录了，请先注销。', { '注销': syzoj.utils.makeUrl(['logout'], { 'url': req.originalUrl }) })
+//     });
+//   } else {
+//     res.render('sign_up');
+//   }
 });
 
 // Logout
