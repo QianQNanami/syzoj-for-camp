@@ -26,11 +26,9 @@ app.get('/problems', async (req, res) => {
         query.where('is_public = 1')
              .orWhere('user_id = :user_id', { user_id: res.locals.user.id })
              .orWhere(qb => {
-              qb.where('EXISTS (SELECT 1 FROM problem_group pg')
-                .andWhere('pg.problem_id = problem.id')
-                .andWhere('EXISTS (SELECT 1 FROM user_group ug WHERE ug.user_id = :user_id AND ug.group_id = pg.group_id))', {
-                  user_id: res.locals.user.id
-                });
+              qb.innerJoin('problem_group', 'pg', 'pg.problem_id = problem.id')
+                .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
+                .where('ug.user_id = :user_id', { user_id: res.locals.user.id });
             });
       } else {
         query.where('is_public = 1');
