@@ -24,7 +24,14 @@ app.get('/problems', async (req, res) => {
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
       if (res.locals.user) {
         query.where('is_public = 1')
-             .orWhere('user_id = :user_id', { user_id: res.locals.user.id });
+             .orWhere('user_id = :user_id', { user_id: res.locals.user.id })
+             .orWhere(qb => {
+              qb.where('EXISTS (SELECT 1 FROM problem_group pg')
+                .andWhere('pg.problem_id = problem.id')
+                .andWhere('EXISTS (SELECT 1 FROM user_group ug WHERE ug.user_id = :user_id AND ug.group_id = pg.group_id))', {
+                  user_id: res.locals.user.id
+                });
+            });
       } else {
         query.where('is_public = 1');
       }
@@ -36,13 +43,8 @@ app.get('/problems', async (req, res) => {
       query.orderBy(sort, order.toUpperCase());
     }
 
-    let problemall = await Problem.query(query);
-    problemall = await Promise.all(problemall.filter(async problem => {
-      return await problem.isAllowedViewBy(res.locals.user, problem.id);
-    }));
-
-    let paginate = syzoj.utils.paginate(problemall.length, req.query.page, syzoj.config.page.problem);
-    let problems = problemall.slice((paginate.currPage - 1) * paginate.perPage, paginate.currPage * paginate.perPage);
+    let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
+    let problems = await Problem.queryPage(paginate, query);
 
     await problems.forEachAsync(async problem => {
       problem.allowedEdit = await problem.isAllowedEditBy(res.locals.user);
