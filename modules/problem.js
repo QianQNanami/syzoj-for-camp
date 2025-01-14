@@ -20,29 +20,29 @@ app.get('/problems', async (req, res) => {
     if (!['id', 'title', 'rating', 'ac_num', 'submit_num', 'ac_rate', 'publicize_time'].includes(sort) || !['asc', 'desc'].includes(order)) {
       throw new ErrorMessage('错误的排序参数。');
     }
-
-    sort = 'Problem_' + sort;
+    
+    const realsort = 'Problem_' + sort;
 
     let query = Problem.createQueryBuilder();
     const Brackets = require('typeorm').Brackets;
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
       if (res.locals.user) {
         query.where(new Brackets(qb => {
-          qb.where('is_public = 1')
-            .orWhere('user_id = :user_id', { user_id: res.locals.user.id })
+          qb.where('Problem_is_public = 1')
+            .orWhere('Problem_user_id = :user_id', { user_id: res.locals.user.id })
         }));
       } else {
-        query.where('is_public = 1');
+        query.where('Problem_is_public = 1');
       }
     }
 
-    if (sort === 'Problem_ac_rate') {
-      query.orderBy('ac_num / submit_num', order.toUpperCase());
+    if (sort === 'ac_rate') {
+      query.orderBy('Problem_ac_num / Problem_submit_num', order.toUpperCase());
     } else {
       query.orderBy(sort, order.toUpperCase());
     }
 
-    query.innerJoin('problem_group', 'pg', 'pg.problem_id = id')
+    query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem_id')
          .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
          .andWhere('ug.user_id_fucorm = :user_id', { user_id: res.locals.user.id });
 
@@ -59,7 +59,7 @@ app.get('/problems', async (req, res) => {
       allowedManageTag: res.locals.user && await res.locals.user.hasPrivilege('manage_problem_tag'),
       problems: problems,
       paginate: paginate,
-      curSort: sort,
+      curSort: realsort,
       curOrder: order === 'asc'
     });
   } catch (e) {
