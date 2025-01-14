@@ -77,10 +77,10 @@ export default class User extends Model {
   })
   user_type: UserType;
 
-  @TypeORM.Column({ nullable: true, type: "varcher", length: 120 })
+  @TypeORM.Column({ nullable: true, type: "varchar", length: 120 })
   school: string;
 
-  @TypeORM.Column({ nullable: true, type: "varcher", length: 60 })
+  @TypeORM.Column({ nullable: true, type: "varchar", length: 60 })
   realname: string;
 
   static async fromEmail(email): Promise<User> {
