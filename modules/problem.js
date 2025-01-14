@@ -5,6 +5,7 @@ let Contest = syzoj.model('contest');
 let ProblemTag = syzoj.model('problem_tag');
 let Article = syzoj.model('article');
 
+
 const randomstring = require('randomstring');
 const fs = require('fs-extra');
 const jwt = require('jsonwebtoken');
@@ -21,12 +22,13 @@ app.get('/problems', async (req, res) => {
     }
 
     let query = Problem.createQueryBuilder();
+    const Brackets = require('typeorm').Brackets;
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
       if (res.locals.user) {
-        query.where(qb => {
+        query.where(new Brackets(qb => {
           qb.where('is_public = 1')
-            .orWhere('user_id = :user_id', { user_id: res.locals.user.id })
-        });
+            .orWhere('Problem.user_id = :user_id', { user_id: res.locals.user.id })
+        }));
       } else {
         query.where('is_public = 1');
       }
