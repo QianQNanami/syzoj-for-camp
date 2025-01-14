@@ -27,7 +27,7 @@ app.get('/problems', async (req, res) => {
       if (res.locals.user) {
         query.where(new Brackets(qb => {
           qb.where('is_public = 1')
-            .orWhere('Problem.user_id = :user_id', { user_id: res.locals.user.id })
+            .orWhere('user_id = :user_id', { user_id: res.locals.user.id })
         }));
       } else {
         query.where('is_public = 1');
