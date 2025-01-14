@@ -25,11 +25,11 @@ app.get('/problems', async (req, res) => {
       if (res.locals.user) {
         query.where('is_public = 1')
              .andWhere(qb => {
-               qb.innerJoin('problem_group', 'pg', 'pg.problem_id = id')
+               qb.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
                  .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
                  .where('ug.user_id = :user_id', { user_id: res.locals.user.id });
              })
-             .orWhere('user_id = :user_id', { user_id: res.locals.user.id });
+             .orWhere('Problem.user_id = :user_id', { user_id: res.locals.user.id });
       } else {
         query.where('is_public = 1');
       }
