@@ -7,7 +7,7 @@ import User from "./user";
 import Problem from "./problem";
 import ContestRanklist from "./contest_ranklist";
 import ContestPlayer from "./contest_player";
-import ContestGroup from "./contest_group";
+import ContestGroup from "./contest-group";
 import UserGroup from "./user-group";
 
 enum ContestType {
@@ -155,6 +155,8 @@ export default class Contest extends Model {
 
   async isAllowedViewBy(user, cid) {
     if(!user) return false;
+    // if (user.is_admin) return true;
+    // if (user.type == "admin" || user.type == "lecturer") return true;
     let allowedGroup = await ContestGroup.find({
         where: {
             contest_id: cid,
