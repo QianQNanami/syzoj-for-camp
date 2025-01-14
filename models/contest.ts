@@ -7,6 +7,7 @@ import User from "./user";
 import Problem from "./problem";
 import ContestRanklist from "./contest_ranklist";
 import ContestPlayer from "./contest_player";
+import ContestGroup from "./contest-group";
 
 enum ContestType {
   NOI = "noi",
@@ -149,5 +150,24 @@ export default class Contest extends Model {
   isEnded(now?) {
     if (!now) now = syzoj.utils.getCurrentDate();
     return now >= this.end_time;
+  }
+
+  async isAllowedViewBy(user, cid) {
+    if(!user) return false;
+    let allowedGroup = await ContestGroup.find({
+        where: {
+            contest_id: cid,
+        }
+    });
+    for (let group of allowedGroup) {
+        let hasgroup = await UserGroup.find({
+            where: {
+                user_id: user.id,
+                group_id: group.group_id,
+            }
+        });
+        if(hasgroup) return true;
+    }
+    return false;
   }
 }

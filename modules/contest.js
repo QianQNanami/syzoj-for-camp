@@ -135,6 +135,10 @@ app.get('/contest/:id', async (req, res) => {
     let contest = await Contest.findById(contest_id);
     if (!contest) throw new ErrorMessage('无此比赛。');
 
+    if (!await Contest.isAllowedViewBy(curUser, contest_id)) {
+        throw new ErrorMessage('您没有权限访问此比赛。');
+    }
+
     const isSupervisior = await contest.isSupervisior(curUser);
 
     // if contest is non-public, both system administrators and contest administrators can see it.

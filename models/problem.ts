@@ -10,12 +10,14 @@ import Contest from "./contest";
 import ProblemTag from "./problem_tag";
 import ProblemTagMap from "./problem_tag_map";
 import SubmissionStatistics, { StatisticsType } from "./submission_statistics";
+import ProblemGroup from "./problem-group";
 
 import * as fs from "fs-extra";
 import * as path from "path";
 import * as util from "util";
 import * as LRUCache from "lru-cache";
 import * as DeepCopy from "deepcopy";
+import UserGroup from "./user-group";
 
 const problemTagCache = new LRUCache<number, number[]>({
   max: syzoj.config.db.cache_size
@@ -144,6 +146,26 @@ export default class Problem extends Model {
     if (!user) return false;
     if (await user.hasPrivilege('manage_problem')) return true;
     return user.is_admin;
+  }
+
+  async isAllowedViewBy(user, pid) {
+    if(!user) return false;
+    let allowedGroup = await ProblemGroup.find({
+        where: {
+          problem_id: pid
+        }
+    });
+    if(!allowedGroup) return false;
+    for (let group of allowedGroup) {
+      let hasgroup = await UserGroup.find({
+        where: {
+          user_id: user.id,
+          group_id: group.group_id
+        }
+      })
+      if (hasgroup) return true;
+    }
+    return false;
   }
 
   getTestdataPath() {
