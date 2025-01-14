@@ -20,7 +20,7 @@ app.get('/problems', async (req, res) => {
       throw new ErrorMessage('错误的排序参数。');
     }
 
-    let query = Problem.createQueryBuilder();
+    let query = Problem.createQueryBuilder('problem');
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
       if (res.locals.user) {
         query.where('is_public = 1')
