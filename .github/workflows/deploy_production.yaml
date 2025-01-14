@@ -23,7 +23,7 @@ jobs:
           yarn install
 
       - name: Archive Build
-        run: tar -czf app.tar.gz . --exclude='./node_modules' --exclude='./app.tar.gz' --exclude='./.git'
+        run: tar --exclude='./node_modules' --exclude='./app.tar.gz' --exclude='./.git' -czf app.tar.gz . 
 
       - name: Deploy to Server
         env:
