@@ -36,8 +36,13 @@ app.get('/problems', async (req, res) => {
       query.orderBy(sort, order.toUpperCase());
     }
 
-    let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
-    let problems = await Problem.queryPage(paginate, query);
+    let problemall = await Problem.queryPage(0, query);
+    problemall = await Promise.all(problems.filter(async problem => {
+      return await problem.isAllowedViewBy(res.locals.user, problem.id);
+    }));
+
+    let paginate = syzoj.utils.paginate(problemall.length, req.query.page, syzoj.config.page.problem);
+    let problems = problemall.slice(paginate.start, paginate.end);
 
     await problems.forEachAsync(async problem => {
       problem.allowedEdit = await problem.isAllowedEditBy(res.locals.user);
@@ -100,7 +105,7 @@ app.get('/problems/search', async (req, res) => {
     }
 
     let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
-    let problems = await Problem.queryPage(paginate, query);
+    let problems = await Problem.queryPage(paginate, query).filter(problem => problem.isAllowedViewBy(res.locals.user, problem.id));
 
     await problems.forEachAsync(async problem => {
       problem.allowedEdit = await problem.isAllowedEditBy(res.locals.user);
