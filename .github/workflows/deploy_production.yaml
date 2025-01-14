@@ -10,8 +10,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Change Working Directory
+        run: |
+          mkdir -p syzoj-web
+          cd syzoj-web
+
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          path: 'syzoj-web'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -23,7 +30,7 @@ jobs:
           yarn install
 
       - name: Archive Build
-        run: tar --exclude='./node_modules' --exclude='./app.tar.gz' --exclude='./.git' --warning=no-file-changed -czf app.tar.gz . 
+        run: tar --exclude='./node_modules' --exclude='./app.tar.gz' --exclude='./.git' -czf app.tar.gz . 
 
       - name: Deploy to Server
         env:
