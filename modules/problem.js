@@ -23,10 +23,8 @@ app.get('/problems', async (req, res) => {
     let query = Problem.createQueryBuilder('Problem');
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
       if (res.locals.user) {
-        query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
-             .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
-             .where('(Problem.is_public = 1 AND ug.user_id = :user_id)', { user_id: res.locals.user.id })
-             .orWhere('Problem.user_id = :user_id', { user_id: res.locals.user.id })
+        query.where('is_public = 1')
+             .orWhere('user_od = :user_id', { user_id: res.locals.user.id });
       } else {
         query.where('is_public = 1');
       }
