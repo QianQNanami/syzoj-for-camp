@@ -132,12 +132,12 @@ app.get('/contest/:id', async (req, res) => {
     const curUser = res.locals.user;
     let contest_id = parseInt(req.params.id);
 
+    let contest = await Contest.findById(contest_id);
+    if (!contest) throw new ErrorMessage('无此比赛。');
+
     if (!await Contest.isAllowedViewBy(curUser, contest_id)) {
         throw new ErrorMessage('您没有权限访问此比赛。');
     }
-
-    let contest = await Contest.findById(contest_id);
-    if (!contest) throw new ErrorMessage('无此比赛。');
 
     const isSupervisior = await contest.isSupervisior(curUser);
 

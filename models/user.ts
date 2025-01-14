@@ -254,7 +254,7 @@ export default class User extends Model {
       for (let teacher of delTeacher) {
         let obj = await UserTeacher.findOne({ where: {
           user_id: this.id,
-          teacher: teacher
+          teacher_id: teacher
         } });
 
         await obj.destroy();
