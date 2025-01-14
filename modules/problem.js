@@ -23,10 +23,10 @@ app.get('/problems', async (req, res) => {
     let query = Problem.createQueryBuilder();
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
       if (res.locals.user) {
-        query.where(new Brackets(qb => {
+        query.where(qb => {
           qb.where('is_public = 1')
             .orWhere('user_id = :user_id', { user_id: res.locals.user.id })
-        }));
+        });
       } else {
         query.where('is_public = 1');
       }
