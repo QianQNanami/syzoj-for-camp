@@ -21,6 +21,8 @@ app.get('/problems', async (req, res) => {
       throw new ErrorMessage('错误的排序参数。');
     }
 
+    sort = 'Problem_' + sort;
+
     let query = Problem.createQueryBuilder();
     const Brackets = require('typeorm').Brackets;
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
@@ -34,7 +36,7 @@ app.get('/problems', async (req, res) => {
       }
     }
 
-    if (sort === 'ac_rate') {
+    if (sort === 'Problem_ac_rate') {
       query.orderBy('ac_num / submit_num', order.toUpperCase());
     } else {
       query.orderBy(sort, order.toUpperCase());
