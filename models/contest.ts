@@ -7,7 +7,7 @@ import User from "./user";
 import Problem from "./problem";
 import ContestRanklist from "./contest_ranklist";
 import ContestPlayer from "./contest_player";
-import ContestGroup from "./contest-group";
+import ContestGroup from "./contest_group";
 import UserGroup from "./user-group";
 
 enum ContestType {
