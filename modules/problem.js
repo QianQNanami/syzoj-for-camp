@@ -42,7 +42,7 @@ app.get('/problems', async (req, res) => {
     }));
 
     let paginate = syzoj.utils.paginate(problemall.length, req.query.page, syzoj.config.page.problem);
-    let problems = problemall.slice(paginate.start, paginate.end);
+    let problems = problemall.slice((paginate.currPage - 1) * paginate.perPage, paginate.currPage * paginate.perPage);
 
     await problems.forEachAsync(async problem => {
       problem.allowedEdit = await problem.isAllowedEditBy(res.locals.user);
