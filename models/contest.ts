@@ -8,6 +8,7 @@ import Problem from "./problem";
 import ContestRanklist from "./contest_ranklist";
 import ContestPlayer from "./contest_player";
 import ContestGroup from "./contest-group";
+import UserGroup from "./user-group";
 
 enum ContestType {
   NOI = "noi",
