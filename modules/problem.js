@@ -20,11 +20,13 @@ app.get('/problems', async (req, res) => {
       throw new ErrorMessage('错误的排序参数。');
     }
 
-    let query = Problem.createQueryBuilder('Problem');
+    let query = Problem.createQueryBuilder();
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
       if (res.locals.user) {
-        query.where('is_public = 1')
-             .orWhere('user_od = :user_id', { user_id: res.locals.user.id });
+        query.where(new Brackets(qb => {
+          qb.where('is_public = 1')
+            .orWhere('user_id = :user_id', { user_id: res.locals.user.id })
+        }));
       } else {
         query.where('is_public = 1');
       }
@@ -35,6 +37,10 @@ app.get('/problems', async (req, res) => {
     } else {
       query.orderBy(sort, order.toUpperCase());
     }
+
+    query.innerJoin('problem_group', 'pg', 'pg.problem_id = id')
+         .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
+         .andWhere('ug.user_id = :user_id', { user_id: res.locals.user.id });
 
     let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
     let problems = await Problem.queryPage(paginate, query);
