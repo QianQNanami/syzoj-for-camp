@@ -300,7 +300,7 @@ export default class User extends Model {
 
     for (let group of addGroup) {
       let obj = await UserGroup.create({
-        user_id: this.id,
+        user_id_fucorm: this.id,
         group_id: group
       });
 
