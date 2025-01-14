@@ -274,7 +274,7 @@ export default class User extends Model {
   async getGroup() {
     let group = await UserGroup.find({
       where: {
-        user_id: this.id
+        user_id_fucorm: this.id
       },
       order: {
         group_id: 'ASC'
@@ -300,7 +300,7 @@ export default class User extends Model {
 
     for (let group of addGroup) {
       let obj = await UserGroup.create({
-        user_id: this.id,
+        user_id_fucorm: this.id,
         group_id: group
       });
 

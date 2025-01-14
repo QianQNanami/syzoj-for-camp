@@ -44,7 +44,7 @@ app.get('/problems', async (req, res) => {
 
     query.innerJoin('problem_group', 'pg', 'pg.problem_id = id')
          .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
-         .andWhere('ug.user_id = :user_id', { user_id: res.locals.user.id });
+         .andWhere('ug.user_id_fucorm = :user_id', { user_id: res.locals.user.id });
 
     let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
     let problems = await Problem.queryPage(paginate, query);
