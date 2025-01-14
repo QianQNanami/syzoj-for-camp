@@ -1,0 +1,40 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '16.20.1'
+
+      - name: Install and Build
+        run: |
+          yarn install
+
+      - name: Archive Build
+        run: tar -czf app.tar.gz .
+
+      - name: Deploy to Server
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_USER: root
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          DEPLOY_PATH: /opt/syzoj/web/
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
+          rsync -avz app.tar.gz $SERVER_USER@$SERVER_IP:/tmp/app.tar.gz
+          ssh $SERVER_USER@$SERVER_IP "tar -xzf /tmp/app.tar.gz -C $DEPLOY_PATH && cd $DEPLOY_PATH && systemctl restart syzoj-web"
