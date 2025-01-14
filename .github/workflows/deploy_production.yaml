@@ -45,4 +45,4 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
           rsync -avz app.tar.gz $SERVER_USER@$SERVER_IP:/tmp/app.tar.gz
-          ssh $SERVER_USER@$SERVER_IP "find $DEPLOY_PATH -mindepth 1 -not -name 'node_modules' -not -name '.git' -not -name 'config.json' -not -name 'sessions' -not -name 'uploads' -exec rm -rf {} + && tar -xzf /tmp/app.tar.gz -C $DEPLOY_PATH && cd $DEPLOY_PATH && systemctl restart syzoj-web"
+          ssh $SERVER_USER@$SERVER_IP "rm -rf models-built models libs modules views static migrates && tar -xzf /tmp/app.tar.gz -C $DEPLOY_PATH && cd $DEPLOY_PATH && systemctl restart syzoj-web"
