@@ -128,7 +128,7 @@ app.get('/article/:id', async (req, res) => {
 app.get('/article/:id/edit', async (req, res) => {
   try {
     if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
-
+    if (await res.locals.user.isStudent()) throw new ErrorMessage('您没有权限进行此操作。');
     let id = parseInt(req.params.id);
     let article = await Article.findById(id);
 
@@ -154,6 +154,7 @@ app.get('/article/:id/edit', async (req, res) => {
 app.post('/article/:id/edit', async (req, res) => {
   try {
     if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+    if (await res.locals.user.isStudent()) throw new ErrorMessage('您没有权限进行此操作。');
 
     let id = parseInt(req.params.id);
     let article = await Article.findById(id);
@@ -223,6 +224,7 @@ app.post('/article/:id/delete', async (req, res) => {
 app.post('/article/:id/comment', async (req, res) => {
   try {
     if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+    if (await res.locals.user.isStudent()) throw new ErrorMessage('您没有权限进行此操作。');
 
     let id = parseInt(req.params.id);
     let article = await Article.findById(id);
