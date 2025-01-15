@@ -188,11 +188,9 @@ export default class Contest extends Model {
       return [];
     }
   
-    let groupInstances = await Group.find({
-      where: {
-        id: In(groupIds),
-      },
-    });
+    let groupInstances = await Group.createQueryBuilder('group')
+    .where('group.group_id IN (:...ids)', { ids: groupIds })
+    .getMany();
   
     return groupInstances;
   }
