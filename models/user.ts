@@ -103,6 +103,14 @@ export default class User extends Model {
     });
   }
 
+  static async fromRealName(name): Promise<User> {
+    return User.findOne({
+      where: {
+        realname: String(name)
+      }
+    });
+  }
+
   async isAllowedEditBy(user) {
     if (!user) return false;
     if (await user.hasPrivilege('manage_user')) return true;

@@ -43,6 +43,19 @@ app.get('/find_user', async (req, res) => {
   }
 });
 
+app.get('/find_realname', async (req, res) => {
+    try {
+      let user = await User.fromRealName(req.query.realname);
+      if (!user) throw new ErrorMessage('无此用户。');
+      res.redirect(syzoj.utils.makeUrl(['user', user.id]));
+    } catch (e) {
+      syzoj.log(e);
+      res.render('error', {
+        err: e
+      });
+    }
+  });
+
 // Login
 app.get('/login', async (req, res) => {
   if (res.locals.user) {
