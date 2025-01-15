@@ -159,7 +159,7 @@ export default class Problem extends Model {
     for (let group of allowedGroup) {
       let hasgroup = await UserGroup.find({
         where: {
-          user_id_fucorm: user.id,
+          user_id: user.id,
           group_id: group.group_id
         }
       })

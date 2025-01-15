@@ -21,30 +21,30 @@ app.get('/problems', async (req, res) => {
       throw new ErrorMessage('错误的排序参数。');
     }
     
-    const realsort = 'Problem_' + sort;
+    const realsort = 'Problem.' + sort;
 
     let query = Problem.createQueryBuilder();
     const Brackets = require('typeorm').Brackets;
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
       if (res.locals.user) {
         query.where(new Brackets(qb => {
-          qb.where('Problem_is_public = 1')
-            .orWhere('Problem_user_id = :user_id', { user_id: res.locals.user.id })
+          qb.where('Problem.is_public = 1')
+            .orWhere('Problem.user_id = :user_id', { user_id: res.locals.user.id })
         }));
       } else {
-        query.where('Problem_is_public = 1');
+        query.where('Problem.is_public = 1');
       }
     }
 
     if (sort === 'ac_rate') {
-      query.orderBy('Problem_ac_num / Problem_submit_num', order.toUpperCase());
+      query.orderBy('Problem.ac_num / Problem.submit_num', order.toUpperCase());
     } else {
-      query.orderBy(sort, order.toUpperCase());
+      query.orderBy(realsort, order.toUpperCase());
     }
 
-    query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem_id')
+    query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
          .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
-         .andWhere('ug.user_id_fucorm = :user_id', { user_id: res.locals.user.id });
+         .andWhere('ug.user_id = :user_id', { user_id: res.locals.user.id });
 
     let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
     let problems = await Problem.queryPage(paginate, query);

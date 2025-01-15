@@ -7,7 +7,7 @@ declare var syzoj: any;
 export default class UserGroup extends Model {
   @TypeORM.Index()
   @TypeORM.PrimaryColumn({ type: "integer" })
-  user_id_fucorm: number;
+  user_id: number;
   
   @TypeORM.PrimaryColumn({ type: "integer"})
   group_id: number;
