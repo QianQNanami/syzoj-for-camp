@@ -79,35 +79,43 @@ app.get('/problems/search', async (req, res) => {
       throw new ErrorMessage('错误的排序参数。');
     }
 
+    const realsort = 'Problem.' + sort;
+
     let query = Problem.createQueryBuilder();
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
       if (res.locals.user) {
         query.where(new TypeORM.Brackets(qb => {
-             qb.where('is_public = 1')
-                 .orWhere('user_id = :user_id', { user_id: res.locals.user.id })
+             qb.where('Problem.is_public = 1')
+                 .orWhere('Problem.user_id = :user_id', { user_id: res.locals.user.id })
              }))
              .andWhere(new TypeORM.Brackets(qb => {
-               qb.where('title LIKE :title', { title: `%${req.query.keyword}%` })
-                 .orWhere('id = :id', { id: id })
+               qb.where('Problem.title LIKE :title', { title: `%${req.query.keyword}%` })
+                 .orWhere('Problem.id = :id', { id: id })
              }));
       } else {
-        query.where('is_public = 1')
+        query.where('Problem.is_public = 1')
              .andWhere(new TypeORM.Brackets(qb => {
-               qb.where('title LIKE :title', { title: `%${req.query.keyword}%` })
+               qb.where('Problem.title LIKE :title', { title: `%${req.query.keyword}%` })
                  .orWhere('id = :id', { id: id })
              }));
       }
     } else {
-      query.where('title LIKE :title', { title: `%${req.query.keyword}%` })
-           .orWhere('id = :id', { id: id })
+      query.where(new TypeORM.Brackets(qb => {
+        qb.where('Problem.title LIKE :title', { title: `%${req.query.keyword}%` })
+          .orWhere('Problem.id = :id', { id: id })
+      }));
     }
 
-    query.orderBy('id = ' + id.toString(), 'DESC');
+    query.orderBy('Problem.id = ' + id.toString(), 'DESC');
     if (sort === 'ac_rate') {
-      query.addOrderBy('ac_num / submit_num', order.toUpperCase());
+      query.addOrderBy('Problem.ac_num / Problem.submit_num', order.toUpperCase());
     } else {
-      query.addOrderBy(sort, order.toUpperCase());
+      query.addOrderBy(realsort, order.toUpperCase());
     }
+
+    query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
+         .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
+         .andWhere('ug.user_id = :user_id', { user_id: res.locals.user.id });
 
     let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
     let problems = await Problem.queryPage(paginate, query).filter(problem => problem.isAllowedViewBy(res.locals.user, problem.id));
@@ -122,7 +130,7 @@ app.get('/problems/search', async (req, res) => {
       allowedManageTag: res.locals.user && await res.locals.user.hasPrivilege('manage_problem_tag'),
       problems: problems,
       paginate: paginate,
-      curSort: sort,
+      curSort: realsort,
       curOrder: order === 'asc'
     });
   } catch (e) {
