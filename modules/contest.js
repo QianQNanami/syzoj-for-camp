@@ -43,6 +43,7 @@ app.get('/contest/:id/edit', async (req, res) => {
 
     let contest_id = parseInt(req.params.id);
     let contest = await Contest.findById(contest_id);
+    let groups = []
     if (!contest) {
       // if contest does not exist, only system administrators can create one
       if (!res.locals.user || !res.locals.user.is_admin) throw new ErrorMessage('您没有权限进行此操作。');
@@ -54,6 +55,7 @@ app.get('/contest/:id/edit', async (req, res) => {
       if (!res.locals.user || (!res.locals.user.is_admin && !contest.admins.includes(res.locals.user.id.toString()))) throw new ErrorMessage('您没有权限进行此操作。');
 
       await contest.loadRelationships();
+      groups = await contest.findGroupByContestId(id);
     }
 
     let problems = [], admins = [];
@@ -63,7 +65,8 @@ app.get('/contest/:id/edit', async (req, res) => {
     res.render('contest_edit', {
       contest: contest,
       problems: problems,
-      admins: admins
+      admins: admins,
+      groups: groups
     });
   } catch (e) {
     syzoj.log(e);
@@ -122,6 +125,9 @@ app.post('/contest/:id/edit', async (req, res) => {
     contest.hide_statistics = req.body.hide_statistics === 'on';
 
     await contest.save();
+
+    let newGroups = await req.body.groups.map(x => parseInt(x));
+    await contest.setGroups(newGroups);
 
     res.redirect(syzoj.utils.makeUrl(['contest', contest.id]));
   } catch (e) {

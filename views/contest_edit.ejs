@@ -11,6 +11,14 @@
                 <label>比赛描述</label>
                 <input type="text" name="subtitle" class="markdown-edit" value="<%= contest.subtitle %>">
               </div>
+              <div class="field">
+                <label>所属用户组</label>
+                <select class="ui fluid search dropdown" multiple="" id="search_groups" name="groups">
+                  <% for (let group of groups) { %>
+                    <option value="<%= group.group_id %>" selected><%= group.group_name %></option>
+                  <% } %>
+                </select>
+              </div>
             <div class="field">
                 <label>试题列表</label>
                 <select class="ui fluid search dropdown" multiple="" id="search_problems" name="problems">
@@ -109,6 +117,24 @@ $(function () {
           var a = $('#search_problems').val().map(function (x) { return parseInt(x) });
           if (response.results) {
             response.results = response.results.filter(function(x) {return !a.includes(parseInt(x.value));});
+          }
+          return response;
+        },
+        cache: false
+      }
+    });
+});
+$(function () {
+  $('#search_groups')
+    .dropdown({
+      debug: true,
+      saveRemoteData: false,
+      apiSettings: {
+        url: '/api/v2/search/groups/{query}',
+        onResponse: function (response) {
+          var a = $('#search_groups').val().map(function (x) { return parseInt(x) });
+          if (response.results) {
+            response.results = response.results.filter(function(x) { return !a.includes(parseInt(x.value));});
           }
           return response;
         },
