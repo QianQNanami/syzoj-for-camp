@@ -108,7 +108,7 @@ app.get('/api/v2/search/groups/:keyword*?', async (req, res) => {
         group_name: TypeORM.Like(`%${keyword}%`)
       },
       order: {
-        name: 'ASC'
+        group_name: 'ASC'
       }
     });
 
