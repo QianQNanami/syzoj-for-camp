@@ -44,7 +44,7 @@ app.get('/problems', async (req, res) => {
 
     query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
          .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
-         .andWhere('ug.user_id = :user_id', { user_id: res.locals.user.id });
+         .andWhere('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
 
     let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
     let problems = await Problem.queryPage(paginate, query);
@@ -96,7 +96,7 @@ app.get('/problems/search', async (req, res) => {
         query.where('Problem.is_public = 1')
              .andWhere(new TypeORM.Brackets(qb => {
                qb.where('Problem.title LIKE :title', { title: `%${req.query.keyword}%` })
-                 .orWhere('id = :id', { id: id })
+                 .orWhere('Problem.id = :id', { id: id })
              }));
       }
     } else {
@@ -113,12 +113,12 @@ app.get('/problems/search', async (req, res) => {
       query.addOrderBy(realsort, order.toUpperCase());
     }
 
-    query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
-         .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
-         .andWhere('ug.user_id = :user_id', { user_id: res.locals.user.id });
+    // query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
+    //      .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
+    //      .andWhere('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
 
     let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
-    let problems = await Problem.queryPage(paginate, query).filter(problem => problem.isAllowedViewBy(res.locals.user, problem.id));
+    let problems = await Problem.queryPage(paginate, query);
 
     await problems.forEachAsync(async problem => {
       problem.allowedEdit = await problem.isAllowedEditBy(res.locals.user);
