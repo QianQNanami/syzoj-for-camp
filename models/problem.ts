@@ -551,7 +551,7 @@ export default class Problem extends Model {
   }
 
   async setGroups(newGroupIDs) {
-    let oldGroupIDs = (await ProblemGroup.find({where:{problem_id: this.id}})).map(x => x.id);
+    let oldGroupIDs = (await ProblemGroup.find({where:{problem_id: this.id}})).map(x => x.group_id);
 
     let delGroupIDs = oldGroupIDs.filter(x => !newGroupIDs.includes(x));
     let addGroupIDs = newGroupIDs.filter(x => !oldGroupIDs.includes(x));
@@ -677,7 +677,7 @@ export default class Problem extends Model {
       },
     });
   
-    let groupIds = groups.map(group => group.id);
+    let groupIds = groups.map(group => group.group_id);
   
     if (groupIds.length === 0) {
       return [];
