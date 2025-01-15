@@ -175,7 +175,7 @@ export default class Contest extends Model {
     return false;
   }
 
-  async findGroupsByContestId(cid: number) {
+  async findGroupByContestId(cid: number) {
     let groups = await ContestGroup.find({
       where: {
         contest_id: cid,

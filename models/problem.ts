@@ -670,7 +670,7 @@ export default class Problem extends Model {
     return vjudge ? require("../libs/vjudge").languages[vjudge] : null;
   }
 
-  async findGroupsByProblemId(pid) {
+  async findGroupByProblemId(pid) {
     let groups = await ProblemGroup.find({
       where: {
         problem_id: pid,
