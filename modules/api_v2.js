@@ -114,7 +114,7 @@ app.get('/api/v2/search/groups/:keyword*?', async (req, res) => {
 
     let result = groups.slice(0, syzoj.config.page.edit_problem_tag_list);
 
-    result = result.map(x => ({ group_id: x.group_id, group_name: x.group_name }));
+    result = result.map(x => ({ name: x.group_name, value: x.id }));
     res.send({ success: true, results: result });
   } catch (e) {
     syzoj.log(e);
