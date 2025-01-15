@@ -4,6 +4,7 @@ let JudgeState = syzoj.model('judge_state');
 let Article = syzoj.model('article');
 let Contest = syzoj.model('contest');
 let User = syzoj.model('user');
+let Group = syzoj.model('group');
 let UserPrivilege = syzoj.model('user_privilege');
 const RatingCalculation = syzoj.model('rating_calculation');
 const RatingHistory = syzoj.model('rating_history');
@@ -459,6 +460,61 @@ app.post('/admin/links', async (req, res) => {
     res.render('error', {
       err: e
     })
+  }
+});
+
+app.get('/admin/groups', async (req, res) => {
+  try {
+    if (!res.locals.user || !res.locals.user.is_admin) throw new ErrorMessage('您没有权限进行此操作。');
+
+    const groups = await Group.find();
+
+    res.render('admin_groups', {
+      groups: groups
+    });
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
+app.post('/admin/groups', async (req, res) => {
+  try {
+    if (!res.locals.user || !res.locals.user.is_admin) throw new ErrorMessage('您没有权限进行此操作。');
+
+    const updatedGroups = JSON.parse(req.body.data);
+
+    for (const groupData of updatedGroups) {
+      groupData.group_id = parseInt(groupData.group_id);
+      if (!groupData.group_id || isNaN(groupData.group_id)) {
+        throw new ErrorMessage('组ID必须为数字');
+      }
+      if (!groupData.group_name) {
+        throw new ErrorMessage('组名不能为空');
+      }
+    }
+    const existingGroups = await Group.find();
+    for (const groupData of updatedGroups) {
+      if (!existingGroups.find(group => group.group_id === groupData.group_id)) {
+        Group.deleteById(groupData.group_id);
+      }
+    }
+    await Group.clear();
+    for (const groupData of updatedGroups) {
+      const group = new Group();
+      group.group_id = groupData.group_id;
+      group.group_name = groupData.group_name;
+      await group.save();
+    }
+
+    res.redirect(syzoj.utils.makeUrl(['admin', 'groups']));
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
   }
 });
 

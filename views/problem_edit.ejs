@@ -27,6 +27,12 @@
           <% } %>
           <label for="title">题目名称</label>
           <input class="font-content" type="text" id="title" name="title" value="<%= problem.title %>">
+          <label style="margin-top: 15px; ">所属用户组</label>
+          <select class="ui fluid search dropdown" multiple="" id="search_groups" name="groups">
+            <% for (let group of problem.groups) { %>
+              <option value="<%= group.group_id %>" selected><%= group.group_name %></option>
+            <% } %>
+          </select>
         
           <label style="margin-top: 15px; " for="description">题目描述</label>
           <textarea class="markdown-edit" rows="15" id="description" name="description"><%= problem.description %></textarea>
@@ -105,6 +111,25 @@ $(function () {
           var a = $('#search_tags').val().map(function (x) { return parseInt(x) });
           if (response.results) {
             response.results = response.results.filter(function(x) { return !a.includes(parseInt(x.value));});
+          }
+          return response;
+        },
+        cache: false
+      }
+    });
+});
+
+$(function () {
+  $('#search_groups')
+    .dropdown({
+      debug: true,
+      saveRemoteData: false,
+      apiSettings: {
+        url: '/api/v2/search/groups/{query}',
+        onResponse: function (response) {
+          var a = $('#search_groups').val().map(function (x) { return parseInt(x) });
+          if (response.results) {
+            response.results = response.results.filter(function(x) { return !a.includes(parseInt(x.group_name));});
           }
           return response;
         },

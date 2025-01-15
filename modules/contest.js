@@ -10,14 +10,19 @@ const { getSubmissionInfo, getRoughResult, processOverallResult } = require('../
 
 app.get('/contests', async (req, res) => {
   try {
-    let where;
-    if (res.locals.user && res.locals.user.is_admin) where = {}
-    else where = { is_public: true };
+    let query = Contest.createQueryBuilder();
+    if (!res.locals.user || !res.locals.user.is_admin) {
+      query.where('Contest.is_public = 1');
+    }
 
-    let paginate = syzoj.utils.paginate(await Contest.countForPagination(where), req.query.page, syzoj.config.page.contest);
-    let contests = await Contest.queryPage(paginate, where, {
-      start_time: 'DESC'
-    });
+    query.innerJoin('contest_group', 'cg', 'cg.contest_id = Contest.id')
+         .innerJoin('user_group', 'ug', 'ug.group_id = cg.group_id')
+         .andWhere('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
+
+    query.orderBy('Contest.start_time', 'DESC');
+
+    let paginate = syzoj.utils.paginate(await Contest.countForPagination(query), req.query.page, syzoj.config.page.contest);
+    let contests = await Contest.queryPage(paginate, query);
 
     await contests.forEachAsync(async x => x.subtitle = await syzoj.utils.markdown(x.subtitle));
 

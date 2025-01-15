@@ -4,6 +4,8 @@ let FormattedCode = syzoj.model('formatted_code');
 let Contest = syzoj.model('contest');
 let ProblemTag = syzoj.model('problem_tag');
 let Article = syzoj.model('article');
+let Group = syzoj.model('group');
+
 
 const randomstring = require('randomstring');
 const fs = require('fs-extra');
@@ -19,22 +21,31 @@ app.get('/problems', async (req, res) => {
     if (!['id', 'title', 'rating', 'ac_num', 'submit_num', 'ac_rate', 'publicize_time'].includes(sort) || !['asc', 'desc'].includes(order)) {
       throw new ErrorMessage('错误的排序参数。');
     }
+    
+    const realsort = 'Problem.' + sort;
 
     let query = Problem.createQueryBuilder();
+    const Brackets = require('typeorm').Brackets;
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
       if (res.locals.user) {
-        query.where('is_public = 1')
-             .orWhere('user_id = :user_id', { user_id: res.locals.user.id });
+        query.where(new Brackets(qb => {
+          qb.where('Problem.is_public = 1')
+            .orWhere('Problem.user_id = :user_id', { user_id: res.locals.user.id })
+        }));
       } else {
-        query.where('is_public = 1');
+        query.where('Problem.is_public = 1');
       }
     }
 
     if (sort === 'ac_rate') {
-      query.orderBy('ac_num / submit_num', order.toUpperCase());
+      query.orderBy('Problem.ac_num / Problem.submit_num', order.toUpperCase());
     } else {
-      query.orderBy(sort, order.toUpperCase());
+      query.orderBy(realsort, order.toUpperCase());
     }
+
+    query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
+         .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
+         .andWhere('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
 
     let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
     let problems = await Problem.queryPage(paginate, query);
@@ -49,7 +60,7 @@ app.get('/problems', async (req, res) => {
       allowedManageTag: res.locals.user && await res.locals.user.hasPrivilege('manage_problem_tag'),
       problems: problems,
       paginate: paginate,
-      curSort: sort,
+      curSort: realsort,
       curOrder: order === 'asc'
     });
   } catch (e) {
@@ -69,35 +80,43 @@ app.get('/problems/search', async (req, res) => {
       throw new ErrorMessage('错误的排序参数。');
     }
 
+    const realsort = 'Problem.' + sort;
+
     let query = Problem.createQueryBuilder();
     if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_problem')) {
       if (res.locals.user) {
         query.where(new TypeORM.Brackets(qb => {
-             qb.where('is_public = 1')
-                 .orWhere('user_id = :user_id', { user_id: res.locals.user.id })
+             qb.where('Problem.is_public = 1')
+                 .orWhere('Problem.user_id = :user_id', { user_id: res.locals.user.id })
              }))
              .andWhere(new TypeORM.Brackets(qb => {
-               qb.where('title LIKE :title', { title: `%${req.query.keyword}%` })
-                 .orWhere('id = :id', { id: id })
+               qb.where('Problem.title LIKE :title', { title: `%${req.query.keyword}%` })
+                 .orWhere('Problem.id = :id', { id: id })
              }));
       } else {
-        query.where('is_public = 1')
+        query.where('Problem.is_public = 1')
              .andWhere(new TypeORM.Brackets(qb => {
-               qb.where('title LIKE :title', { title: `%${req.query.keyword}%` })
-                 .orWhere('id = :id', { id: id })
+               qb.where('Problem.title LIKE :title', { title: `%${req.query.keyword}%` })
+                 .orWhere('Problem.id = :id', { id: id })
              }));
       }
     } else {
-      query.where('title LIKE :title', { title: `%${req.query.keyword}%` })
-           .orWhere('id = :id', { id: id })
+      query.where(new TypeORM.Brackets(qb => {
+        qb.where('Problem.title LIKE :title', { title: `%${req.query.keyword}%` })
+          .orWhere('Problem.id = :id', { id: id })
+      }));
     }
 
-    query.orderBy('id = ' + id.toString(), 'DESC');
+    query.orderBy('Problem.id = ' + id.toString(), 'DESC');
     if (sort === 'ac_rate') {
-      query.addOrderBy('ac_num / submit_num', order.toUpperCase());
+      query.addOrderBy('Problem.ac_num / Problem.submit_num', order.toUpperCase());
     } else {
-      query.addOrderBy(sort, order.toUpperCase());
+      query.addOrderBy(realsort, order.toUpperCase());
     }
+
+    // query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
+    //      .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
+    //      .andWhere('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
 
     let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
     let problems = await Problem.queryPage(paginate, query);
@@ -112,7 +131,7 @@ app.get('/problems/search', async (req, res) => {
       allowedManageTag: res.locals.user && await res.locals.user.hasPrivilege('manage_problem_tag'),
       problems: problems,
       paginate: paginate,
-      curSort: sort,
+      curSort: realsort,
       curOrder: order === 'asc'
     });
   } catch (e) {
@@ -290,11 +309,13 @@ app.get('/problem/:id/edit', async (req, res) => {
       problem.id = id;
       problem.allowedEdit = true;
       problem.tags = [];
+      problem.groups = [];
       problem.new = true;
     } else {
       if (!await problem.isAllowedUseBy(res.locals.user)) throw new ErrorMessage('您没有权限进行此操作。');
       problem.allowedEdit = await problem.isAllowedEditBy(res.locals.user);
       problem.tags = await problem.getTags();
+      problem.groups = await problem.findGroupByProblemId(id);
     }
 
     problem.allowedManage = await problem.isAllowedManageBy(res.locals.user);
@@ -364,8 +385,16 @@ app.post('/problem/:id/edit', async (req, res) => {
       req.body.tags = [req.body.tags];
     }
 
+    if (!req.body.groups) {
+      req.body.groups = [];
+    } else if (!Array.isArray(req.body.groups)) {
+      req.body.groups = [req.body.groups];
+    }
+
     let newTagIDs = await req.body.tags.map(x => parseInt(x)).filterAsync(async x => ProblemTag.findById(x));
+    let newGroups = await req.body.groups.map(x => parseInt(x));
     await problem.setTags(newTagIDs);
+    await problem.setGroups(newGroups);
 
     res.redirect(syzoj.utils.makeUrl(['problem', problem.id]));
   } catch (e) {
