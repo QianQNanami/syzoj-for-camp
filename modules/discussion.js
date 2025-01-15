@@ -51,6 +51,10 @@ app.get('/discussion/problem/:pid', async (req, res) => {
       throw new ErrorMessage('您没有权限进行此操作。');
     }
 
+    if (await res.locals.user.isStudent()) {
+      throw new ErrorMessage('您没有权限进行此操作。');
+    }
+
     let where = { problem_id: pid };
     let paginate = syzoj.utils.paginate(await Article.countForPagination(where), req.query.page, syzoj.config.page.discussion);
     let articles = await Article.queryPage(paginate, where, {
