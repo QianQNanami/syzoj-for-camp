@@ -19,6 +19,7 @@ import * as util from "util";
 import * as LRUCache from "lru-cache";
 import * as DeepCopy from "deepcopy";
 import UserGroup from "./user-group";
+import Group from "./group";
 
 const problemTagCache = new LRUCache<number, number[]>({
   max: syzoj.config.db.cache_size
@@ -641,13 +642,26 @@ export default class Problem extends Model {
     return vjudge ? require("../libs/vjudge").languages[vjudge] : null;
   }
 
-  async findGroupByProblemId(pid) {
-    let group = await ProblemGroup.find({
+  async findGroupsByProblemId(pid) {
+    let groups = await ProblemGroup.find({
       where: {
-        problem_id: pid
-      }
+        problem_id: pid,
+      },
     });
-    return group;
+  
+    let groupIds = groups.map(group => group.id);
+  
+    if (groupIds.length === 0) {
+      return [];
+    }
+  
+    let groupInstances = await Group.find({
+      where: {
+        id: In(groupIds),
+      },
+    });
+  
+    return groupInstances;
   }
 
 }

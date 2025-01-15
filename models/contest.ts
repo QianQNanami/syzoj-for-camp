@@ -9,6 +9,7 @@ import ContestRanklist from "./contest_ranklist";
 import ContestPlayer from "./contest_player";
 import ContestGroup from "./contest-group";
 import UserGroup from "./user-group";
+import Group from "./group";
 
 enum ContestType {
   NOI = "noi",
@@ -174,12 +175,26 @@ export default class Contest extends Model {
     return false;
   }
 
-  async findGroupByContestId(cid) {
-    let group = await ContestGroup.find({
+  async findGroupsByContestId(cid: number) {
+    let groups = await ContestGroup.find({
       where: {
-        contest_id: cid
-      }
+        contest_id: cid,
+      },
     });
-    return group;
+  
+    let groupIds = groups.map(group => group.id);
+  
+    if (groupIds.length === 0) {
+      return [];
+    }
+  
+    let groupInstances = await Group.find({
+      where: {
+        id: In(groupIds),
+      },
+    });
+  
+    return groupInstances;
   }
+  
 }
