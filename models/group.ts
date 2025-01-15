@@ -15,7 +15,7 @@ export default class Group extends Model {
   @TypeORM.PrimaryColumn({ type: "varchar", length: 80})
   group_name: string;
 
-  async deleteById(gid) {
+  static async deleteById(gid) {
     let contest = await ContestGroup.find({
         where: {
             group_id: gid

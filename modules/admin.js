@@ -495,6 +495,12 @@ app.post('/admin/groups', async (req, res) => {
         throw new ErrorMessage('组名不能为空');
       }
     }
+    const existingGroups = await Group.find();
+    for (const groupData of updatedGroups) {
+      if (!existingGroups.find(group => group.group_id === groupData.group_id)) {
+        Group.deleteById(groupData.group_id);
+      }
+    }
     await Group.clear();
     for (const groupData of updatedGroups) {
       const group = new Group();

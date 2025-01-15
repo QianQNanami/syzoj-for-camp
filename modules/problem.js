@@ -392,7 +392,9 @@ app.post('/problem/:id/edit', async (req, res) => {
     }
 
     let newTagIDs = await req.body.tags.map(x => parseInt(x)).filterAsync(async x => ProblemTag.findById(x));
+    let newGroups = await req.body.groups.map(x => parseInt(x));
     await problem.setTags(newTagIDs);
+    await problem.setGroups(newGroups);
 
     res.redirect(syzoj.utils.makeUrl(['problem', problem.id]));
   } catch (e) {
