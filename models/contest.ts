@@ -195,4 +195,32 @@ export default class Contest extends Model {
     return groupInstances;
   }
   
+  async setGroups(newGroupIDs) {
+      let oldGroupIDs = (await ContestGroup.find({where:{problem_id: this.id}})).map(x => x.group_id);
+  
+      let delGroupIDs = oldGroupIDs.filter(x => !newGroupIDs.includes(x));
+      let addGroupIDs = newGroupIDs.filter(x => !oldGroupIDs.includes(x));
+  
+      for (let gid of delGroupIDs) {
+        let map = await ContestGroup.findOne({
+          where: {
+            contest_id: this.id,
+            group_id: gid
+          }
+        });
+  
+        await map.destroy();
+      }
+  
+      for (let gid of addGroupIDs) {
+        let map = await ContestGroup.create({
+          contest_id: this.id,
+          group_id: gid
+        });
+  
+        await map.save();
+      }
+  
+    }
+
 }
