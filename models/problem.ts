@@ -550,6 +550,34 @@ export default class Problem extends Model {
     problemTagCache.set(this.id, newTagIDs);
   }
 
+  async setGroups(newGroupIDs) {
+    let oldGroupIDs = (await ProblemGroup.find({where:{problem_id: this.id}})).map(x => x.group_id);
+
+    let delGroupIDs = oldGroupIDs.filter(x => !newGroupIDs.includes(x));
+    let addGroupIDs = newGroupIDs.filter(x => !oldGroupIDs.includes(x));
+
+    for (let gid of delGroupIDs) {
+      let map = await ProblemGroup.findOne({
+        where: {
+          problem_id: this.id,
+          group_id: gid
+        }
+      });
+
+      await map.destroy();
+    }
+
+    for (let gid of addGroupIDs) {
+      let map = await ProblemGroup.create({
+        problem_id: this.id,
+        group_id: gid
+      });
+
+      await map.save();
+    }
+
+  }
+
   async changeID(id) {
     const entityManager = TypeORM.getManager();
 
@@ -642,24 +670,22 @@ export default class Problem extends Model {
     return vjudge ? require("../libs/vjudge").languages[vjudge] : null;
   }
 
-  async findGroupsByProblemId(pid) {
+  async findGroupByProblemId(pid) {
     let groups = await ProblemGroup.find({
       where: {
         problem_id: pid,
       },
     });
   
-    let groupIds = groups.map(group => group.id);
+    let groupIds = groups.map(group => group.group_id);
   
     if (groupIds.length === 0) {
       return [];
     }
   
-    let groupInstances = await Group.find({
-      where: {
-        id: In(groupIds),
-      },
-    });
+    let groupInstances = await Group.createQueryBuilder('group')
+    .where('group.group_id IN (:...ids)', { ids: groupIds })
+    .getMany();
   
     return groupInstances;
   }
