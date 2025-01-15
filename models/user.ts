@@ -77,11 +77,15 @@ export default class User extends Model {
   })
   user_type: UserType;
 
+  @TypeORM.Index()
   @TypeORM.Column({ nullable: true, type: "varchar", length: 120 })
   school: string;
 
   @TypeORM.Column({ nullable: true, type: "varchar", length: 60 })
   realname: string;
+
+  @TypeORM.Column({ nullable: true, type: "varchar", length: 120 })
+  location: string;
 
   static async fromEmail(email): Promise<User> {
     return User.findOne({

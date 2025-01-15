@@ -173,4 +173,13 @@ export default class Contest extends Model {
     }
     return false;
   }
+
+  async findGroupByContestId(cid) {
+    let group = await ContestGroup.find({
+      where: {
+        contest_id: cid
+      }
+    });
+    return group;
+  }
 }

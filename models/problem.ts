@@ -640,4 +640,14 @@ export default class Problem extends Model {
     let vjudge = this.type.startsWith("vjudge:") ? this.type.split(":")[1] : null;
     return vjudge ? require("../libs/vjudge").languages[vjudge] : null;
   }
+
+  async findGroupByProblemId(pid) {
+    let group = await ProblemGroup.find({
+      where: {
+        problem_id: pid
+      }
+    });
+    return group;
+  }
+
 }
