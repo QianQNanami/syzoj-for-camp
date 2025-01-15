@@ -386,7 +386,7 @@ app.post('/problem/:id/edit', async (req, res) => {
     }
 
     if (!req.body.groups) {
-      req.body.groups = [];
+      req.body.groups = [6];
     } else if (!Array.isArray(req.body.groups)) {
       req.body.groups = [req.body.groups];
     }

@@ -126,6 +126,10 @@ app.post('/contest/:id/edit', async (req, res) => {
 
     await contest.save();
 
+    if (!req.body.groups) {
+      req.body.groups = [6];
+    }
+
     let newGroups = await req.body.groups.map(x => parseInt(x));
     await contest.setGroups(newGroups);
 
