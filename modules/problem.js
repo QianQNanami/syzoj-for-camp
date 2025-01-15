@@ -4,6 +4,7 @@ let FormattedCode = syzoj.model('formatted_code');
 let Contest = syzoj.model('contest');
 let ProblemTag = syzoj.model('problem_tag');
 let Article = syzoj.model('article');
+let Group = syzoj.model('group');
 
 
 const randomstring = require('randomstring');
@@ -308,11 +309,13 @@ app.get('/problem/:id/edit', async (req, res) => {
       problem.id = id;
       problem.allowedEdit = true;
       problem.tags = [];
+      problem.groups = [];
       problem.new = true;
     } else {
       if (!await problem.isAllowedUseBy(res.locals.user)) throw new ErrorMessage('您没有权限进行此操作。');
       problem.allowedEdit = await problem.isAllowedEditBy(res.locals.user);
       problem.tags = await problem.getTags();
+      problem.groups = await problem.findGroupByProblemId(id);
     }
 
     problem.allowedManage = await problem.isAllowedManageBy(res.locals.user);
@@ -380,6 +383,12 @@ app.post('/problem/:id/edit', async (req, res) => {
       req.body.tags = [];
     } else if (!Array.isArray(req.body.tags)) {
       req.body.tags = [req.body.tags];
+    }
+
+    if (!req.body.groups) {
+      req.body.groups = [];
+    } else if (!Array.isArray(req.body.groups)) {
+      req.body.groups = [req.body.groups];
     }
 
     let newTagIDs = await req.body.tags.map(x => parseInt(x)).filterAsync(async x => ProblemTag.findById(x));
