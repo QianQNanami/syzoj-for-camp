@@ -12,10 +12,10 @@ this.adminPage = 'groups';
 </thead>
 
 <tbody>
-  <% for (let i = 0; i < userGroups.length; i++) { %>
+  <% for (let i = 0; i < groups.length; i++) { %>
     <tr>
-      <td><%= userGroups[i].id %></td>
-      <td><%= userGroups[i].name %></td>
+      <td><%= groups[i].id %></td>
+      <td><%= groups[i].name %></td>
       <td>
         <a onclick="$('#modal-remove-<%= i %>').modal('show');" style="color: #000; " href="#"><i class="remove icon"></i></a>
         <div class="ui basic modal" id="modal-remove-<%= i %>">
@@ -62,17 +62,17 @@ this.adminPage = 'groups';
 </form>
 
 <script>
-var userGroups = <%- serializejs(userGroups) %>;
+var groups = <%- serializejs(groups) %>;
 
 $('.remove_user_group').click(function () {
-  userGroups.splice($(this).data('id'), 1);
-  $('#submit_data').val(JSON.stringify(userGroups));
+  groups.splice($(this).data('id'), 1);
+  $('#submit_data').val(JSON.stringify(groups));
   $('#submit_form').submit();
 });
 
 $('#add_button').click(function () {
-  userGroups.push({ id: $('#add_id').val(), name: $('#add_name').val() });
-  $('#submit_data').val(JSON.stringify(userGroups));
+  groups.push({ id: $('#add_id').val(), name: $('#add_name').val() });
+  $('#submit_data').val(JSON.stringify(groups));
   $('#submit_form').submit();
 });
 </script>
