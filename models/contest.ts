@@ -182,7 +182,7 @@ export default class Contest extends Model {
       },
     });
   
-    let groupIds = groups.map(group => group.id);
+    let groupIds = groups.map(group => group.group_id);
   
     if (groupIds.length === 0) {
       return [];
