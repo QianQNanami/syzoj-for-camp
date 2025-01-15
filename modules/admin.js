@@ -487,15 +487,19 @@ app.post('/admin/groups', async (req, res) => {
     const updatedGroups = JSON.parse(req.body.data);
 
     for (const groupData of updatedGroups) {
-      if (!groupData.id || isNaN(groupData.id)) {
-      throw new ErrorMessage('组ID必须为数字');
+      groupData.group_id = parseInt(groupData.group_id);
+      if (!groupData.group_id || isNaN(groupData.group_id)) {
+        throw new ErrorMessage('组ID必须为数字');
+      }
+      if (!groupData.group_name) {
+        throw new ErrorMessage('组名不能为空');
       }
     }
     await Group.clear();
     for (const groupData of updatedGroups) {
       const group = new Group();
-      group.group_id = groupData.id;
-      group.group_name = groupData.name;
+      group.group_id = groupData.group_id;
+      group.group_name = groupData.group_name;
       await group.save();
     }
 

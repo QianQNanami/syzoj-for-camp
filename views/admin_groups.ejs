@@ -14,8 +14,8 @@ this.adminPage = 'groups';
 <tbody>
   <% for (let i = 0; i < groups.length; i++) { %>
     <tr>
-      <td><%= groups[i].id %></td>
-      <td><%= groups[i].name %></td>
+      <td><%= groups[i].group_id %></td>
+      <td><%= groups[i].group_name %></td>
       <td>
         <a onclick="$('#modal-remove-<%= i %>').modal('show');" style="color: #000; " href="#"><i class="remove icon"></i></a>
         <div class="ui basic modal" id="modal-remove-<%= i %>">
@@ -71,7 +71,7 @@ $('.remove_user_group').click(function () {
 });
 
 $('#add_button').click(function () {
-  groups.push({ id: $('#add_id').val(), name: $('#add_name').val() });
+  groups.push({ group_id: $('#add_id').val(), group_name: $('#add_name').val() });
   $('#submit_data').val(JSON.stringify(groups));
   $('#submit_form').submit();
 });
