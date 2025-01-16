@@ -31,7 +31,7 @@ jobs:
 
       - name: Archive Build
         run: |
-          tar --exclude='syzoj-web/node_modules' --exclude='syzoj-web/app.tar.gz' --exclude='syzoj-web/.git' --transform='s/^syzoj-web\///' -czf app.tar.gz syzoj-web/*
+          tar --exclude='syzoj-web/uploads' --exclude='syzoj-web/node_modules' --exclude='syzoj-web/app.tar.gz' --exclude='syzoj-web/.git' --transform='s/^syzoj-web\///' -czf app.tar.gz syzoj-web/*
 
       - name: Deploy to Server
         env:
