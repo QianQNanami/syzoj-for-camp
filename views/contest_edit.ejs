@@ -14,7 +14,7 @@
               <div class="field">
                 <label>所属用户组</label>
                 <select class="ui fluid search dropdown" multiple="" id="search_groups" name="groups">
-                  <% for (let group of groups) { %>
+                  <% for (let group of existgroups) { %>
                     <option value="<%= group.group_id %>" selected><%= group.group_name %></option>
                   <% } %>
                 </select>

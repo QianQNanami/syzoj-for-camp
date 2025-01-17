@@ -66,7 +66,7 @@ app.get('/contest/:id/edit', async (req, res) => {
       contest: contest,
       problems: problems,
       admins: admins,
-      groups: groups
+      existgroups: groups
     });
   } catch (e) {
     syzoj.log(e);
