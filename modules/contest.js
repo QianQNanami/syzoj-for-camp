@@ -55,7 +55,7 @@ app.get('/contest/:id/edit', async (req, res) => {
       if (!res.locals.user || (!res.locals.user.is_admin && !contest.admins.includes(res.locals.user.id.toString()))) throw new ErrorMessage('您没有权限进行此操作。');
 
       await contest.loadRelationships();
-      groups = await contest.findGroupByContestId(id);
+      groups = await contest.findGroupByContestId(contest.id);
     }
 
     let problems = [], admins = [];
@@ -66,7 +66,7 @@ app.get('/contest/:id/edit', async (req, res) => {
       contest: contest,
       problems: problems,
       admins: admins,
-      groups: groups
+      existgroups: groups
     });
   } catch (e) {
     syzoj.log(e);
@@ -128,8 +128,10 @@ app.post('/contest/:id/edit', async (req, res) => {
 
     if (!req.body.groups) {
       req.body.groups = [6];
+    } else if (!Array.isArray(req.body.groups)) {
+      req.body.groups = [req.body.groups];
     }
-
+    
     let newGroups = await req.body.groups.map(x => parseInt(x));
     await contest.setGroups(newGroups);
 
