@@ -175,11 +175,11 @@ export default class Contest extends Model {
     return false;
   }
 
-  async findGroupByContestId(cid: number) {
+  async findGroupByContestId(cid) {
     let groups = await ContestGroup.find({
       where: {
         contest_id: cid,
-      },
+      }
     });
   
     let groupIds = groups.map(group => group.group_id);
@@ -196,7 +196,7 @@ export default class Contest extends Model {
   }
   
   async setGroups(newGroupIDs) {
-      let oldGroupIDs = (await ContestGroup.find({where:{problem_id: this.id}})).map(x => x.group_id);
+      let oldGroupIDs = (await ContestGroup.find({where:{contest_id: this.id}})).map(x => x.group_id);
   
       let delGroupIDs = oldGroupIDs.filter(x => !newGroupIDs.includes(x));
       let addGroupIDs = newGroupIDs.filter(x => !oldGroupIDs.includes(x));
