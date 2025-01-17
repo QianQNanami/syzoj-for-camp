@@ -4,8 +4,8 @@ let FormattedCode = syzoj.model('formatted_code');
 let Contest = syzoj.model('contest');
 let ProblemTag = syzoj.model('problem_tag');
 let Article = syzoj.model('article');
-let Group = syzoj.model('group');
-
+let ProblemGroup = syzoj.model('problem_group');
+let UserGroup = syzoj.model('user_group');
 
 const randomstring = require('randomstring');
 const fs = require('fs-extra');
@@ -299,6 +299,8 @@ app.get('/problem/:id/edit', async (req, res) => {
     let id = parseInt(req.params.id) || 0;
     let problem = await Problem.findById(id);
 
+    if (await res.locals.user.isStudent()) throw new ErrorMessage('您没有权限进行此操作。');
+
     if (!problem) {
       if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
       problem = await Problem.create({
@@ -313,6 +315,18 @@ app.get('/problem/:id/edit', async (req, res) => {
       problem.new = true;
     } else {
       if (!await problem.isAllowedUseBy(res.locals.user)) throw new ErrorMessage('您没有权限进行此操作。');
+      // TODO: Check if the user has the privilege to visit the problem.
+      let visible = false;
+      let groups = await ProblemGroup.find({
+        where: { problem_id: id }
+      })
+      for (let group of groups) {
+        if (await UserGroup.find({where: { user_id: res.locals.user.id, group_id: group.group_id }})) {
+            visible = true;
+            break;
+        }
+      }
+      if (!visible) throw new ErrorMessage('您没有权限进行此操作。');
       problem.allowedEdit = await problem.isAllowedEditBy(res.locals.user);
       problem.tags = await problem.getTags();
       problem.groups = await problem.findGroupByProblemId(id);
