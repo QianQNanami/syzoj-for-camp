@@ -228,6 +228,11 @@ export default class User extends Model {
     return false;
   }
 
+  async isTeacher() {
+    if (this.user_type == UserType.Student) return true;
+    return false;
+  }
+
   async getLastSubmitLanguage() {
     let a = await JudgeState.findOne({
       where: {
