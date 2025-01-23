@@ -3,7 +3,7 @@ name: Deploy to Server
 on:
   push:
     branches:
-      - master
+      - dev
 
 jobs:
   deploy:
@@ -12,12 +12,12 @@ jobs:
     steps:
       - name: Change Working Directory
         run: |
-          mkdir -p syzoj-web
+          mkdir -p syzoj-web2
 
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          path: 'syzoj-web'
+          path: 'syzoj-web2'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -26,23 +26,23 @@ jobs:
 
       - name: Install and Build
         run: |
-          cd syzoj-web
+          cd syzoj-web2
           yarn install
 
       - name: Archive Build
         run: |
-          tar --exclude='syzoj-web/uploads' --exclude='syzoj-web/node_modules' --exclude='syzoj-web/app.tar.gz' --exclude='syzoj-web/.git' --transform='s/^syzoj-web\///' -czf app.tar.gz syzoj-web/*
+          tar --exclude='syzoj-web2/uploads' --exclude='syzoj-web2/node_modules' --exclude='syzoj-web2/app.tar.gz' --exclude='syzoj-web2/.git' --transform='s/^syzoj-web2\///' -czf app2.tar.gz syzoj-web2/*
 
       - name: Deploy to Server
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SERVER_USER: root
           SERVER_IP: ${{ secrets.SERVER_IP }}
-          DEPLOY_PATH: /opt/syzoj/web/
+          DEPLOY_PATH: /opt/syzoj/web2/
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
-          rsync -avz app.tar.gz $SERVER_USER@$SERVER_IP:/tmp/app.tar.gz
-          ssh $SERVER_USER@$SERVER_IP "rm -rf models-built models libs modules views static migrates && tar -xzf /tmp/app.tar.gz -C $DEPLOY_PATH && cd $DEPLOY_PATH && systemctl restart syzoj-web"
+          rsync -avz app2.tar.gz $SERVER_USER@$SERVER_IP:/tmp/app2.tar.gz
+          ssh $SERVER_USER@$SERVER_IP "cd $DEPLOY_PATH && rm -rf models-built models libs modules views static migrates && tar -xzf /tmp/app2.tar.gz -C $DEPLOY_PATH && systemctl restart syzoj-web2"
