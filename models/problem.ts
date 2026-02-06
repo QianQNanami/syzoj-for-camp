@@ -138,10 +138,16 @@ export default class Problem extends Model {
   }
 
   async isAllowedUseBy(user) {
-    if (this.is_public) return true;
     if (!user) return false;
     if (await user.hasPrivilege('manage_problem')) return true;
-    return this.user_id === user.id;
+    if (this.user_id === user.id) return true;
+
+    let groups = await ProblemGroup.find({ where: { problem_id: this.id } });
+    if (groups && groups.length > 0) {
+      return await this.isAllowedViewBy(user, this.id);
+    }
+
+    return this.is_public;
   }
 
   async isAllowedManageBy(user) {
@@ -157,15 +163,15 @@ export default class Problem extends Model {
           problem_id: pid
         }
     });
-    if(!allowedGroup) return false;
+    if(!allowedGroup || allowedGroup.length === 0) return false;
     for (let group of allowedGroup) {
-      let hasgroup = await UserGroup.find({
+      let count = await UserGroup.count({
         where: {
           user_id: user.id,
           group_id: group.group_id
         }
       })
-      if (hasgroup) return true;
+      if (count > 0) return true;
     }
     return false;
   }

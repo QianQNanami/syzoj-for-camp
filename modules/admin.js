@@ -496,16 +496,24 @@ app.post('/admin/groups', async (req, res) => {
       }
     }
     const existingGroups = await Group.find();
-    for (const groupData of updatedGroups) {
-      if (!existingGroups.find(group => group.group_id === groupData.group_id)) {
-        Group.deleteById(groupData.group_id);
+
+    for (const existingGroup of existingGroups) {
+      if (!updatedGroups.find(g => g.group_id === existingGroup.group_id)) {
+        await Group.deleteById(existingGroup.group_id);
+        await existingGroup.destroy();
       }
     }
-    await Group.clear();
+
     for (const groupData of updatedGroups) {
-      const group = new Group();
-      group.group_id = groupData.group_id;
-      group.group_name = groupData.group_name;
+      let group = await Group.findOne({ where: { group_id: groupData.group_id } });
+      if (!group) {
+        group = await Group.create({
+          group_id: groupData.group_id,
+          group_name: groupData.group_name
+        });
+      } else {
+        group.group_name = groupData.group_name;
+      }
       await group.save();
     }
 

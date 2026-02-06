@@ -181,8 +181,12 @@ app.post('/user/:id/edit', async (req, res) => {
     let allowedEdit = await user.isAllowedEditBy(res.locals.user);
     if (!allowedEdit) throw new ErrorMessage('您没有权限进行此操作。');
 
-    if (req.body.old_password && req.body.new_password) {
-      if (user.password !== req.body.old_password && !await res.locals.user.hasPrivilege('manage_user')) throw new ErrorMessage('旧密码错误。');
+    if (req.body.new_password) {
+      if (req.body.old_password) {
+        if (user.password !== req.body.old_password && !await res.locals.user.hasPrivilege('manage_user')) throw new ErrorMessage('旧密码错误。');
+      } else if (!await res.locals.user.hasPrivilege('manage_user')) {
+        throw new ErrorMessage('请输入旧密码。');
+      }
       user.password = req.body.new_password;
     }
 
