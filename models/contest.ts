@@ -156,15 +156,14 @@ export default class Contest extends Model {
 
   async isAllowedViewBy(user, cid) {
     if(!user) return false;
-    // if (user.is_admin) return true;
-    // if (user.type == "admin" || user.type == "lecturer") return true;
+    if (user.user_type === 'admin' || user.user_type === 'lecturer' || user.is_admin) return true;
     let allowedGroup = await ContestGroup.find({
         where: {
             contest_id: cid,
         }
     });
     for (let group of allowedGroup) {
-        let hasgroup = await UserGroup.find({
+        let hasgroup = await UserGroup.findOne({
             where: {
                 user_id: user.id,
                 group_id: group.group_id,

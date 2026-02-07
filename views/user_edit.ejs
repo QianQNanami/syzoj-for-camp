@@ -15,6 +15,18 @@
 	    	<input type="text" id="username" name="username" value="<%= edited_user.username %>"<% if (!user.allowedManage) { %> readonly<% } %>>
 	    </div>
       <div class="field">
+	    	<label for="realname">姓名</label>
+	    	<input type="text" id="realname" name="realname" value="<%= edited_user.realname %>"<% if (!user.allowedManage) { %> readonly<% } %>>
+	    </div>
+      <div class="field">
+	    	<label for="school">学校</label>
+	    	<input type="text" id="school" name="school" value="<%= edited_user.school %>"<% if (!user.allowedManage) { %> readonly<% } %>>
+	    </div>
+      <div class="field">
+	    	<label for="seat">座位</label>
+	    	<input type="text" id="seat" name="seat" value="<%= edited_user.seat %>"<% if (!user.allowedManage) { %> readonly<% } %>>
+	    </div>
+      <div class="field">
 	    	<label for="sex">性别</label>
 	    	<select class="ui dropdown" name="sex">
           <option value="0" <%= edited_user.sex == 0 ? 'selected': '' %>>其它</option>
@@ -78,6 +90,16 @@
           <label>管理用户</label>
         </div>
       </div>
+      <% if (user.is_admin) { %>
+      <div class="field">
+        <label>班级</label>
+        <select class="ui fluid search dropdown" multiple="" name="groups">
+          <% for (let group of allGroups) { %>
+            <option value="<%= group.group_id %>" <% if (userGroups.includes(group.group_id)) { %>selected<% } %>><%= group.group_name %></option>
+          <% } %>
+        </select>
+      </div>
+      <% } %>
       <div style="text-align: center; margin-top: 30px; ">
         <button id="submit_button" type="submit" class="ui blue labeled icon button"><i class="ui icon edit"></i>修改</button>
         <a href="<%= syzoj.utils.makeUrl(['user', edited_user.id]) %>" class="ui labeled icon button"><i class="ui icon angle left"></i>返回</a>

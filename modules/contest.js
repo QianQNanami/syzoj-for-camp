@@ -15,9 +15,11 @@ app.get('/contests', async (req, res) => {
       query.where('Contest.is_public = 1');
     }
 
-    query.innerJoin('contest_group', 'cg', 'cg.contest_id = Contest.id')
-         .innerJoin('user_group', 'ug', 'ug.group_id = cg.group_id')
-         .andWhere('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
+    if (!res.locals.user || (res.locals.user.user_type !== 'admin' && res.locals.user.user_type !== 'lecturer')) {
+      query.innerJoin('contest_group', 'cg', 'cg.contest_id = Contest.id')
+           .innerJoin('user_group', 'ug', 'ug.group_id = cg.group_id')
+           .andWhere('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
+    }
 
     query.orderBy('Contest.start_time', 'DESC');
 

@@ -43,9 +43,11 @@ app.get('/problems', async (req, res) => {
       query.orderBy(realsort, order.toUpperCase());
     }
 
-    query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
-         .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
-         .andWhere('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
+    if (!res.locals.user || (res.locals.user.user_type !== 'admin' && res.locals.user.user_type !== 'lecturer')) {
+      query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
+           .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
+           .andWhere('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
+    }
 
     let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
     let problems = await Problem.queryPage(paginate, query);
@@ -296,11 +298,15 @@ app.get('/problem/:id/export', async (req, res) => {
 
 app.get('/problem/:id/edit', async (req, res) => {
   try {
+    if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+    if (!res.locals.user.is_admin && res.locals.user.user_type !== 'lecturer' && res.locals.user.user_type !== 'admin') {
+         throw new ErrorMessage('您没有权限进行此操作。');
+    }
     let id = parseInt(req.params.id) || 0;
     let problem = await Problem.findById(id);
 
     if (!problem) {
-      if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+      // if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) }); // Moved up
       problem = await Problem.create({
         time_limit: syzoj.config.default.problem.time_limit,
         memory_limit: syzoj.config.default.problem.memory_limit,
@@ -333,10 +339,14 @@ app.get('/problem/:id/edit', async (req, res) => {
 
 app.post('/problem/:id/edit', async (req, res) => {
   try {
+    if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+    if (!res.locals.user.is_admin && res.locals.user.user_type !== 'lecturer' && res.locals.user.user_type !== 'admin') {
+         throw new ErrorMessage('您没有权限进行此操作。');
+    }
     let id = parseInt(req.params.id) || 0;
     let problem = await Problem.findById(id);
     if (!problem) {
-      if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+      // if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
 
       problem = await Problem.create({
         time_limit: syzoj.config.default.problem.time_limit,
@@ -407,11 +417,15 @@ app.post('/problem/:id/edit', async (req, res) => {
 
 app.get('/problem/:id/import', async (req, res) => {
   try {
+    if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+    if (!res.locals.user.is_admin && res.locals.user.user_type !== 'lecturer' && res.locals.user.user_type !== 'admin') {
+         throw new ErrorMessage('您没有权限进行此操作。');
+    }
     let id = parseInt(req.params.id) || 0;
     let problem = await Problem.findById(id);
 
     if (!problem) {
-      if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+      // if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
 
       problem = await Problem.create({
         time_limit: syzoj.config.default.problem.time_limit,
@@ -442,10 +456,14 @@ app.get('/problem/:id/import', async (req, res) => {
 
 app.post('/problem/:id/import', async (req, res) => {
   try {
+    if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+    if (!res.locals.user.is_admin && res.locals.user.user_type !== 'lecturer' && res.locals.user.user_type !== 'admin') {
+         throw new ErrorMessage('您没有权限进行此操作。');
+    }
     let id = parseInt(req.params.id) || 0;
     let problem = await Problem.findById(id);
     if (!problem) {
-      if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+      // if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
 
       problem = await Problem.create({
         time_limit: syzoj.config.default.problem.time_limit,
