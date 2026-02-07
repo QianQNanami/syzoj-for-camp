@@ -133,38 +133,43 @@ export default class Problem extends Model {
 
   async isAllowedEditBy(user) {
     if (!user) return false;
+    if (user.user_type === 'admin' || user.user_type === 'lecturer' || user.is_admin) return true;
     if (await user.hasPrivilege('manage_problem')) return true;
     return this.user_id === user.id;
   }
 
   async isAllowedUseBy(user) {
-    if (!user) return false;
-    if (await user.hasPrivilege('manage_problem')) return true;
-    if (this.user_id === user.id) return true;
+    if (user && (user.user_type === 'admin' || user.user_type === 'lecturer' || user.is_admin)) return true;
+    if (user && await user.hasPrivilege('manage_problem')) return true;
+    if (user && this.user_id === user.id) return true;
 
     let groups = await ProblemGroup.find({ where: { problem_id: this.id } });
     if (groups && groups.length > 0) {
       return await this.isAllowedViewBy(user, this.id);
     }
 
-    return this.is_public;
+    return true;
   }
 
   async isAllowedManageBy(user) {
     if (!user) return false;
+    if (user.user_type === 'admin' || user.user_type === 'lecturer' || user.is_admin) return true;
     if (await user.hasPrivilege('manage_problem')) return true;
-    return user.is_admin;
+    return false;
   }
 
   async isAllowedViewBy(user, pid) {
-    if(!user) return false;
-    if (user.user_type === 'admin' || user.user_type === 'lecturer' || user.is_admin) return true;
     let allowedGroup = await ProblemGroup.find({
         where: {
           problem_id: pid
         }
     });
-    if(!allowedGroup || allowedGroup.length === 0) return false;
+    if(!allowedGroup || allowedGroup.length === 0) return true;
+
+    if(!user) return false;
+    if (user.user_type === 'admin' || user.user_type === 'lecturer' || user.is_admin) return true;
+    if (await user.hasPrivilege('manage_problem')) return true;
+    
     for (let group of allowedGroup) {
       let count = await UserGroup.count({
         where: {

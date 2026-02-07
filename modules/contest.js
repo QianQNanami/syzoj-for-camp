@@ -15,10 +15,22 @@ app.get('/contests', async (req, res) => {
       query.where('Contest.is_public = 1');
     }
 
-    if (!res.locals.user || (res.locals.user.user_type !== 'admin' && res.locals.user.user_type !== 'lecturer')) {
-      query.innerJoin('contest_group', 'cg', 'cg.contest_id = Contest.id')
-           .innerJoin('user_group', 'ug', 'ug.group_id = cg.group_id')
-           .andWhere('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
+    if (!res.locals.user || (res.locals.user.user_type !== 'admin' && res.locals.user.user_type !== 'lecturer' && !res.locals.user.is_admin)) {
+      query.andWhere(new (require('typeorm').Brackets)(qb => {
+        qb.where(qb => {
+          let subQuery = syzoj.model('contest-group').createQueryBuilder('cg')
+            .select('cg.contest_id')
+            .where('1=1');
+          return 'Contest.id NOT IN (' + subQuery.getQuery() + ')';
+        })
+        .orWhere(qb => {
+          let subQuery = syzoj.model('contest-group').createQueryBuilder('cg')
+            .innerJoin('user_group', 'ug', 'ug.group_id = cg.group_id')
+            .select('cg.contest_id')
+            .where('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
+          return 'Contest.id IN (' + subQuery.getQuery() + ')';
+        });
+      }), { user_id: res.locals.user ? res.locals.user.id : 0 });
     }
 
     query.orderBy('Contest.start_time', 'DESC');
@@ -54,7 +66,7 @@ app.get('/contest/:id/edit', async (req, res) => {
       contest.id = 0;
     } else {
       // if contest exists, both system administrators and contest administrators can edit it.
-      if (!res.locals.user || (!res.locals.user.is_admin && !contest.admins.includes(res.locals.user.id.toString()))) throw new ErrorMessage('您没有权限进行此操作。');
+      if (!res.locals.user || (!res.locals.user.is_admin && res.locals.user.user_type !== 'admin' && res.locals.user.user_type !== 'lecturer' && !contest.admins.includes(res.locals.user.id.toString()))) throw new ErrorMessage('您没有权限进行此操作。');
 
       await contest.loadRelationships();
       groups = await contest.findGroupByContestId(contest.id);
@@ -99,7 +111,7 @@ app.post('/contest/:id/edit', async (req, res) => {
       contest.type = req.body.type;
     } else {
       // if contest exists, both system administrators and contest administrators can edit it.
-      if (!res.locals.user || (!res.locals.user.is_admin && !contest.admins.includes(res.locals.user.id.toString()))) throw new ErrorMessage('您没有权限进行此操作。');
+      if (!res.locals.user || (!res.locals.user.is_admin && res.locals.user.user_type !== 'admin' && res.locals.user.user_type !== 'lecturer' && !contest.admins.includes(res.locals.user.id.toString()))) throw new ErrorMessage('您没有权限进行此操作。');
       
       await contest.loadRelationships();
       ranklist = contest.ranklist;
@@ -161,7 +173,7 @@ app.get('/contest/:id', async (req, res) => {
     const isSupervisior = await contest.isSupervisior(curUser);
 
     // if contest is non-public, both system administrators and contest administrators can see it.
-    if (!contest.is_public && (!res.locals.user || (!res.locals.user.is_admin && !contest.admins.includes(res.locals.user.id.toString())))) throw new ErrorMessage('比赛未公开，请耐心等待 (´∀ `)');
+    if (!contest.is_public && (!res.locals.user || (!res.locals.user.is_admin && res.locals.user.user_type !== 'admin' && res.locals.user.user_type !== 'lecturer' && !contest.admins.split('|').includes(res.locals.user.id.toString())))) throw new ErrorMessage('比赛未公开，请耐心等待 (´∀ `)');
 
     contest.running = contest.isRunning();
     contest.ended = contest.isEnded();
@@ -265,7 +277,7 @@ app.get('/contest/:id/ranklist', async (req, res) => {
 
     if (!contest) throw new ErrorMessage('无此比赛。');
     // if contest is non-public, both system administrators and contest administrators can see it.
-    if (!contest.is_public && (!res.locals.user || (!res.locals.user.is_admin && !contest.admins.includes(res.locals.user.id.toString())))) throw new ErrorMessage('比赛未公开，请耐心等待 (´∀ `)');
+    if (!contest.is_public && (!res.locals.user || (!res.locals.user.is_admin && res.locals.user.user_type !== 'admin' && res.locals.user.user_type !== 'lecturer' && !contest.admins.split('|').includes(res.locals.user.id.toString())))) throw new ErrorMessage('比赛未公开，请耐心等待 (´∀ `)');
 
     if ([contest.allowedSeeingResult() && contest.allowedSeeingOthers(),
     contest.isEnded(),
@@ -338,7 +350,7 @@ app.get('/contest/:id/submissions', async (req, res) => {
     let contest_id = parseInt(req.params.id);
     let contest = await Contest.findById(contest_id);
     // if contest is non-public, both system administrators and contest administrators can see it.
-    if (!contest.is_public && (!res.locals.user || (!res.locals.user.is_admin && !contest.admins.includes(res.locals.user.id.toString())))) throw new ErrorMessage('比赛未公开，请耐心等待 (´∀ `)');
+    if (!contest.is_public && (!res.locals.user || (!res.locals.user.is_admin && res.locals.user.user_type !== 'admin' && res.locals.user.user_type !== 'lecturer' && !contest.admins.split('|').includes(res.locals.user.id.toString())))) throw new ErrorMessage('比赛未公开，请耐心等待 (´∀ `)');
 
     if (contest.isEnded()) {
       res.redirect(syzoj.utils.makeUrl(['submissions'], { contest: contest_id }));
