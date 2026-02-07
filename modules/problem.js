@@ -454,6 +454,99 @@ app.get('/problem/:id/import', async (req, res) => {
   }
 });
 
+app.get('/problem/:id/import_fps', async (req, res) => {
+  try {
+    if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+    if (!res.locals.user.is_admin && res.locals.user.user_type !== 'lecturer' && res.locals.user.user_type !== 'admin') {
+         throw new ErrorMessage('您没有权限进行此操作。');
+    }
+
+    res.render('problem_import_fps');
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
+app.post('/problem/:id/import_fps', app.multer.fields([{ name: 'fps_xml', maxCount: 1 }]), async (req, res) => {
+  try {
+    if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+    if (!res.locals.user.is_admin && res.locals.user.user_type !== 'lecturer' && res.locals.user.user_type !== 'admin') {
+         throw new ErrorMessage('您没有权限进行此操作。');
+    }
+
+    if (!req.files['fps_xml']) throw new ErrorMessage('请上传 FPS XML 文件。');
+
+    const xmlData = (await fs.readFile(req.files['fps_xml'][0].path)).toString();
+    const xml2js = require('xml2js');
+    const parser = new xml2js.Parser({ explicitArray: false });
+    const result = await parser.parseStringPromise(xmlData);
+
+    let items = result.fps.item;
+    if (!Array.isArray(items)) items = [items];
+
+    const problemsImported = [];
+
+    for (const item of items) {
+      let problem = await Problem.create({
+        title: item.title,
+        description: item.description,
+        input_format: item.input,
+        output_format: item.output,
+        example: `### 样例输入 1\n\n${item.sample_input}\n\n### 样例输出 1\n\n${item.sample_output}`,
+        limit_and_hint: item.hint,
+        time_limit: Math.round(parseFloat(item.time_limit) * 1000) || 1000,
+        memory_limit: parseInt(item.memory_limit) || 256,
+        type: 'traditional',
+        user_id: res.locals.user.id,
+        publicizer_id: res.locals.user.id,
+        is_public: false
+      });
+
+      if (await res.locals.user.hasPrivilege('manage_problem')) {
+        let customID = parseInt(req.body.id);
+        if (customID && items.length === 1) {
+          if (await Problem.findById(customID)) throw new ErrorMessage('ID 已被使用。');
+          problem.id = customID;
+        }
+      }
+
+      await problem.save();
+
+      // Handle testcases
+      const testdataPath = problem.getTestdataPath();
+      await fs.ensureDir(testdataPath);
+
+      if (item.test_input && item.test_output) {
+        let inputs = Array.isArray(item.test_input) ? item.test_input : [item.test_input];
+        let outputs = Array.isArray(item.test_output) ? item.test_output : [item.test_output];
+
+        for (let i = 0; i < inputs.length; i++) {
+          await fs.writeFile(path.join(testdataPath, `${i + 1}.in`), inputs[i]);
+          if (outputs[i]) {
+            await fs.writeFile(path.join(testdataPath, `${i + 1}.out`), outputs[i]);
+          }
+        }
+      }
+
+      problemsImported.push(problem.id);
+    }
+
+    if (problemsImported.length === 1) {
+      res.redirect(syzoj.utils.makeUrl(['problem', problemsImported[0]]));
+    } else {
+      res.redirect(syzoj.utils.makeUrl(['problems']));
+    }
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
 app.post('/problem/:id/import', async (req, res) => {
   try {
     if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
