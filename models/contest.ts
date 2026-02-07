@@ -155,13 +155,17 @@ export default class Contest extends Model {
   }
 
   async isAllowedViewBy(user, cid) {
-    if(!user) return false;
-    if (user.user_type === 'admin' || user.user_type === 'lecturer' || user.is_admin) return true;
     let allowedGroup = await ContestGroup.find({
         where: {
             contest_id: cid,
         }
     });
+    if(!allowedGroup || allowedGroup.length === 0) return true;
+
+    if(!user) return false;
+    if (user.user_type === 'admin' || user.user_type === 'lecturer' || user.is_admin) return true;
+    if (await user.hasPrivilege('manage_contest')) return true;
+    
     for (let group of allowedGroup) {
         let hasgroup = await UserGroup.findOne({
             where: {
