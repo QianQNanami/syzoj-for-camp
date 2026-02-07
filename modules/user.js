@@ -102,6 +102,9 @@ app.get('/user/:id', async (req, res) => {
     await user.renderInformation();
     user.emailVisible = user.public_email || user.allowedEdit;
 
+    let userGroups = await user.getGroup();
+    let groupNames = (await userGroups.mapAsync(async g => (await syzoj.model('group').findOne({ where: { group_id: g.group_id } })).group_name)).join(', ');
+
     const ratingHistoryValues = await RatingHistory.find({
       where: { user_id: user.id },
       order: { rating_calculation_id: 'ASC' }
@@ -128,7 +131,8 @@ app.get('/user/:id', async (req, res) => {
     res.render('user', {
       show_user: user,
       statistics: statistics,
-      ratingHistories: ratingHistories
+      ratingHistories: ratingHistories,
+      groupNames: groupNames
     });
   } catch (e) {
     syzoj.log(e);
@@ -153,9 +157,17 @@ app.get('/user/:id/edit', async (req, res) => {
 
     res.locals.user.allowedManage = await res.locals.user.hasPrivilege('manage_user');
 
+    let allGroups = null;
+    if (res.locals.user && res.locals.user.is_admin) {
+      allGroups = await syzoj.model('group').find();
+    }
+    let userGroups = (await user.getGroup()).map(g => g.group_id);
+
     res.render('user_edit', {
       edited_user: user,
-      error_info: null
+      error_info: null,
+      allGroups: allGroups,
+      userGroups: userGroups
     });
   } catch (e) {
     syzoj.log(e);
@@ -205,12 +217,25 @@ app.post('/user/:id/edit', async (req, res) => {
 
       let privileges = req.body.privileges;
       await user.setPrivileges(privileges);
+
+      if (!req.body.groups) {
+        req.body.groups = [];
+      } else if (!Array.isArray(req.body.groups)) {
+        req.body.groups = [req.body.groups];
+      }
+      await user.setGroup(req.body.groups.map(id => parseInt(id)));
     }
 
     user.information = req.body.information;
     user.sex = req.body.sex;
     user.public_email = (req.body.public_email === 'on');
     user.prefer_formatted_code = (req.body.prefer_formatted_code === 'on');
+
+    if (res.locals.user && await res.locals.user.hasPrivilege('manage_user')) {
+      user.realname = req.body.realname;
+      user.school = req.body.school;
+      user.seat = req.body.seat;
+    }
 
     await user.save();
 
@@ -219,9 +244,17 @@ app.post('/user/:id/edit', async (req, res) => {
     user.privileges = await user.getPrivileges();
     res.locals.user.allowedManage = await res.locals.user.hasPrivilege('manage_user');
 
+    let allGroups = null;
+    if (res.locals.user && res.locals.user.is_admin) {
+      allGroups = await syzoj.model('group').find();
+    }
+    let userGroups = (await user.getGroup()).map(g => g.group_id);
+
     res.render('user_edit', {
       edited_user: user,
-      error_info: ''
+      error_info: '',
+      allGroups: allGroups,
+      userGroups: userGroups
     });
   } catch (e) {
     try {
@@ -234,7 +267,9 @@ app.post('/user/:id/edit', async (req, res) => {
 
     res.render('user_edit', {
       edited_user: user,
-      error_info: e.message
+      error_info: e.message,
+      allGroups: (res.locals.user && res.locals.user.is_admin) ? await syzoj.model('group').find() : null,
+      userGroups: (await user.getGroup()).map(g => g.group_id)
     });
   }
 });

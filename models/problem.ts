@@ -158,6 +158,7 @@ export default class Problem extends Model {
 
   async isAllowedViewBy(user, pid) {
     if(!user) return false;
+    if (user.user_type === 'admin' || user.user_type === 'lecturer' || user.is_admin) return true;
     let allowedGroup = await ProblemGroup.find({
         where: {
           problem_id: pid

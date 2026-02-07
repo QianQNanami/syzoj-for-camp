@@ -43,9 +43,11 @@ app.get('/problems', async (req, res) => {
       query.orderBy(realsort, order.toUpperCase());
     }
 
-    query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
-         .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
-         .andWhere('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
+    if (!res.locals.user || (res.locals.user.user_type !== 'admin' && res.locals.user.user_type !== 'lecturer')) {
+      query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
+           .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
+           .andWhere('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
+    }
 
     let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
     let problems = await Problem.queryPage(paginate, query);
