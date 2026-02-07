@@ -515,12 +515,21 @@ app.post('/problem/:id/import_fps', app.multer.fields([{ name: 'fps_xml', maxCou
     const problemsImported = [];
 
     for (const item of items) {
+      let example = '';
+      if (item.sample_input && item.sample_output) {
+        let sampleInputs = Array.isArray(item.sample_input) ? item.sample_input : [item.sample_input];
+        let sampleOutputs = Array.isArray(item.sample_output) ? item.sample_output : [item.sample_output];
+        for (let i = 0; i < sampleInputs.length; i++) {
+          example += `### 样例输入 ${i + 1}\n\n\`\`\`plain\n${getText(sampleInputs[i])}\n\`\`\`\n\n### 样例输出 ${i + 1}\n\n\`\`\`plain\n${getText(sampleOutputs[i])}\n\`\`\`\n\n`;
+        }
+      }
+
       let problem = await Problem.create({
         title: getText(item.title),
         description: getText(item.description),
         input_format: getText(item.input),
         output_format: getText(item.output),
-        example: `### 样例输入 1\n\n${getText(item.sample_input)}\n\n### 样例输出 1\n\n${getText(item.sample_output)}`,
+        example: example,
         limit_and_hint: getText(item.hint),
         time_limit: Math.round(parseFloat(getText(item.time_limit)) * 1000) || 1000,
         memory_limit: parseInt(getText(item.memory_limit)) || 256,
