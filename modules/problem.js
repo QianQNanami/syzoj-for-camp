@@ -43,10 +43,22 @@ app.get('/problems', async (req, res) => {
       query.orderBy(realsort, order.toUpperCase());
     }
 
-    if (!res.locals.user || (res.locals.user.user_type !== 'admin' && res.locals.user.user_type !== 'lecturer')) {
-      query.innerJoin('problem_group', 'pg', 'pg.problem_id = Problem.id')
-           .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
-           .andWhere('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
+    if (!res.locals.user || (res.locals.user.user_type !== 'admin' && res.locals.user.user_type !== 'lecturer' && !res.locals.user.is_admin)) {
+      query.andWhere(new Brackets(qb => {
+        qb.where(qb => {
+          let subQuery = syzoj.model('problem-group').createQueryBuilder('pg')
+            .select('pg.problem_id')
+            .where('1=1');
+          return 'Problem.id NOT IN (' + subQuery.getQuery() + ')';
+        })
+        .orWhere(qb => {
+          let subQuery = syzoj.model('problem-group').createQueryBuilder('pg')
+            .innerJoin('user_group', 'ug', 'ug.group_id = pg.group_id')
+            .select('pg.problem_id')
+            .where('ug.user_id = :user_id', { user_id: res.locals.user ? res.locals.user.id : 0 });
+          return 'Problem.id IN (' + subQuery.getQuery() + ')';
+        });
+      }), { user_id: res.locals.user ? res.locals.user.id : 0 });
     }
 
     let paginate = syzoj.utils.paginate(await Problem.countForPagination(query), req.query.page, syzoj.config.page.problem);
@@ -231,7 +243,7 @@ app.get('/problem/:id', async (req, res) => {
     problem.allowedEdit = await problem.isAllowedEditBy(res.locals.user);
     problem.allowedManage = await problem.isAllowedManageBy(res.locals.user);
 
-    if (problem.is_public || problem.allowedEdit) {
+    if (problem.is_public || problem.allowedEdit || (res.locals.user && (res.locals.user.is_admin || res.locals.user.user_type === 'admin' || res.locals.user.user_type === 'lecturer'))) {
       await syzoj.utils.markdown(problem, ['description', 'input_format', 'output_format', 'example', 'limit_and_hint']);
     } else {
       throw new ErrorMessage('您没有权限进行此操作。');
@@ -446,6 +458,121 @@ app.get('/problem/:id/import', async (req, res) => {
     res.render('problem_import', {
       problem: problem
     });
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
+app.get('/problem/:id/import_fps', async (req, res) => {
+  try {
+    if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+    if (!res.locals.user.is_admin && res.locals.user.user_type !== 'lecturer' && res.locals.user.user_type !== 'admin') {
+         throw new ErrorMessage('您没有权限进行此操作。');
+    }
+
+    res.render('problem_import_fps');
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
+app.post('/problem/:id/import_fps', app.multer.fields([{ name: 'fps_xml', maxCount: 1 }]), async (req, res) => {
+  try {
+    if (!res.locals.user) throw new ErrorMessage('请登录后继续。', { '登录': syzoj.utils.makeUrl(['login'], { 'url': req.originalUrl }) });
+    if (!res.locals.user.is_admin && res.locals.user.user_type !== 'lecturer' && res.locals.user.user_type !== 'admin') {
+         throw new ErrorMessage('您没有权限进行此操作。');
+    }
+
+    if (!req.files['fps_xml']) throw new ErrorMessage('请上传 FPS XML 文件。');
+
+    const path = require('path');
+    const xmlData = (await fs.readFile(req.files['fps_xml'][0].path)).toString();
+    const xml2js = require('xml2js');
+    const parser = new xml2js.Parser({ explicitArray: false });
+    const util = require('util');
+    const parseStringAsync = util.promisify(parser.parseString);
+    const result = await parseStringAsync(xmlData);
+
+    let items = result.fps.item;
+    if (!Array.isArray(items)) items = [items];
+
+    const getText = (obj) => {
+      if (!obj) return '';
+      if (typeof obj === 'string') return obj;
+      if (typeof obj === 'object') {
+        if (obj._) return obj._;
+        return '';
+      }
+      return String(obj);
+    };
+
+    const problemsImported = [];
+
+    for (const item of items) {
+      let example = '';
+      if (item.sample_input && item.sample_output) {
+        let sampleInputs = Array.isArray(item.sample_input) ? item.sample_input : [item.sample_input];
+        let sampleOutputs = Array.isArray(item.sample_output) ? item.sample_output : [item.sample_output];
+        for (let i = 0; i < sampleInputs.length; i++) {
+          example += `### 样例输入 ${i + 1}\n\n\`\`\`plain\n${getText(sampleInputs[i])}\n\`\`\`\n\n### 样例输出 ${i + 1}\n\n\`\`\`plain\n${getText(sampleOutputs[i])}\n\`\`\`\n\n`;
+        }
+      }
+
+      let problem = await Problem.create({
+        title: getText(item.title),
+        description: getText(item.description),
+        input_format: getText(item.input),
+        output_format: getText(item.output),
+        example: example,
+        limit_and_hint: getText(item.hint),
+        time_limit: Math.round(parseFloat(getText(item.time_limit)) * 1000) || 1000,
+        memory_limit: parseInt(getText(item.memory_limit)) || 256,
+        type: 'traditional',
+        user_id: res.locals.user.id,
+        publicizer_id: res.locals.user.id,
+        is_public: false
+      });
+
+      if (await res.locals.user.hasPrivilege('manage_problem')) {
+        let customID = parseInt(req.body.id);
+        if (customID && items.length === 1) {
+          if (await Problem.findById(customID)) throw new ErrorMessage('ID 已被使用。');
+          problem.id = customID;
+        }
+      }
+
+      await problem.save();
+
+      // Handle testcases
+      const testdataPath = problem.getTestdataPath();
+      await fs.ensureDir(testdataPath);
+
+      if (item.test_input && item.test_output) {
+        let inputs = Array.isArray(item.test_input) ? item.test_input : [item.test_input];
+        let outputs = Array.isArray(item.test_output) ? item.test_output : [item.test_output];
+
+        for (let i = 0; i < inputs.length; i++) {
+          await fs.writeFile(path.join(testdataPath, `${i + 1}.in`), getText(inputs[i]));
+          if (outputs[i]) {
+            await fs.writeFile(path.join(testdataPath, `${i + 1}.out`), getText(outputs[i]));
+          }
+        }
+      }
+
+      problemsImported.push(problem.id);
+    }
+
+    if (problemsImported.length === 1) {
+      res.redirect(syzoj.utils.makeUrl(['problem', problemsImported[0]]));
+    } else {
+      res.redirect(syzoj.utils.makeUrl(['problems']));
+    }
   } catch (e) {
     syzoj.log(e);
     res.render('error', {

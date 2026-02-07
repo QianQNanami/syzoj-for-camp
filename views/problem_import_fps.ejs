@@ -1,0 +1,27 @@
+<% this.title = '从 FPS XML 导入'; %>
+<% include header %>
+<div class="padding">
+  <div style="margin-bottom: 30px; ">
+    <h1 style="margin-bottom: 10px; ">从 FPS XML 导入</h1>
+    支持导入 Free Problem Set (FPS) 格式的 XML 文件。
+  </div>
+
+  <form class="ui form" action="<%= syzoj.utils.makeUrl(['problem', 0, 'import_fps']) %>" method="post" enctype="multipart/form-data">
+      <div class="field">
+          <label>FPS XML 文件</label>
+          <input type="file" name="fps_xml" accept=".xml">
+      </div>
+      <% if (user && (user.user_type === 'admin' || user.is_admin)) { %>
+          <div class="field">
+              <label>题目编号 (可选)</label>
+              <input type="text" name="id" placeholder="留空则自动分配">
+          </div>
+      <% } %>
+      <div style="text-align: center; ">
+      <button type="submit" class="ui labeled submit icon button">
+        <i class="cloud upload icon"></i> 导入
+      </button>
+      </div>
+  </form>
+</div>
+<% include footer %>
