@@ -15,6 +15,9 @@ export default class RatingCalculation extends Model {
   @TypeORM.Column({ nullable: true, type: "integer" })
   contest_id: number;
 
+  @TypeORM.Column({ nullable: true, type: "varchar", length: 255 })
+  poker_name: string;
+
   contest?: Contest;
 
   async loadRelationships() {

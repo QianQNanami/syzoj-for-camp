@@ -124,13 +124,21 @@ app.get('/user/:id', async (req, res) => {
     }];
 
     for (const history of ratingHistoryValues) {
-      const contest = await Contest.findById((await RatingCalculation.findById(history.rating_calculation_id)).contest_id);
+      const calculation = await RatingCalculation.findById(history.rating_calculation_id);
+      let contestName = calculation.poker_name;
+      let participants = 0;
+      if (calculation.contest_id) {
+        const contest = await Contest.findById(calculation.contest_id);
+        contestName = contest.title;
+        participants = await ContestPlayer.count({ contest_id: contest.id });
+      }
+
       ratingHistories.push({
-        contestName: contest.title,
+        contestName: contestName,
         value: history.rating_after,
         delta: history.rating_after - ratingHistories[ratingHistories.length - 1].value,
         rank: history.rank,
-        participants: await ContestPlayer.count({ contest_id: contest.id })
+        participants: participants
       });
     }
     ratingHistories.reverse();
