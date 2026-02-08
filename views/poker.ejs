@@ -235,7 +235,9 @@ socket.on('rerender', function (data) {
     if (data.community != undefined) $('#communityCards').html(data.community.map(renderCard).join(''));
     else $('#communityCards').empty();
     
-    $('#table-title').text('Round ' + data.round + ' | ' + data.stage + ' | Top Bet: $' + data.topBet + ' | Pot: $' + data.pot);
+    let turnPlayer = data.players.find(p => p.status === 'Their Turn');
+    let turnText = turnPlayer ? (' | <span style="color: #21ba45;">Current Turn: ' + (turnPlayer.username === currentUser ? 'YOU' : turnPlayer.username) + '</span>') : '';
+    $('#table-title').html('Round ' + data.round + ' | ' + data.stage + ' | Top Bet: $' + data.topBet + ' | Pot: $' + data.pot + turnText);
     
     $('#opponentCards').html(data.players.filter(p => p.username !== currentUser).map(p => {
         return renderOpponent(p.username, p, data.bets);
@@ -357,11 +359,11 @@ function renderOpponentCards(name, p, bets) {
 function renderSelf(data) {
     $('#playNext').empty();
     $('#usernamesMoney').text('$' + data.money);
-    $('#playerInformationCard').removeClass('yellow secondary green');
+    $('#playerInformationCard').removeClass('yellow secondary green').css('border', '');
     
     if (data.text == 'Their Turn') {
-        $('#playerInformationCard').addClass('yellow');
-        $('#status').text('My Turn');
+        $('#playerInformationCard').addClass('yellow').css('border', '2px solid #fbbd08');
+        $('#status').html('<div class="ui pointing red basic label">It\'s Your Turn!</div>');
         socket.emit('evaluatePossibleMoves', {});
     } else if (data.text == 'Fold') {
         $('#status').text('You Folded');
