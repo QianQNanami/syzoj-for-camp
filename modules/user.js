@@ -242,7 +242,6 @@ app.post('/user/:id/edit', async (req, res) => {
       user.realname = req.body.realname;
       user.school = req.body.school;
       user.seat = req.body.seat;
-      user.teacher = req.body.teacher;
     }
 
     await user.save();

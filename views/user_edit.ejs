@@ -27,10 +27,6 @@
 	    	<input type="text" id="seat" name="seat" value="<%= edited_user.seat %>"<% if (!user.allowedManage) { %> readonly<% } %>>
 	    </div>
       <div class="field">
-	    	<label for="teacher">带队老师</label>
-	    	<input type="text" id="teacher" name="teacher" value="<%= edited_user.teacher %>"<% if (!user.allowedManage) { %> readonly<% } %>>
-	    </div>
-      <div class="field">
 	    	<label for="sex">性别</label>
 	    	<select class="ui dropdown" name="sex">
           <option value="0" <%= edited_user.sex == 0 ? 'selected': '' %>>其它</option>
