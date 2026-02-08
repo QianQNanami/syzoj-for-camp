@@ -106,7 +106,9 @@ app.get('/user/:id', async (req, res) => {
     let groupIds = userGroups.map(g => g.group_id);
     let groupNames = "";
     if (groupIds.length > 0) {
-      let groups = await syzoj.model('group').findByIds(groupIds);
+      let groups = await syzoj.model('group').createQueryBuilder('group')
+        .where('group.group_id IN (:...ids)', { ids: groupIds })
+        .getMany();
       groupNames = groups.map(g => g.group_name).join(', ');
     }
 

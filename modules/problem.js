@@ -47,8 +47,7 @@ app.get('/problems', async (req, res) => {
       query.andWhere(new Brackets(qb => {
         qb.where(qb => {
           let subQuery = syzoj.model('problem-group').createQueryBuilder('pg')
-            .select('pg.problem_id')
-            .where('1=1');
+            .select('pg.problem_id');
           return 'Problem.id NOT IN (' + subQuery.getQuery() + ')';
         })
         .orWhere(qb => {

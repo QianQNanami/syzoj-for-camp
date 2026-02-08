@@ -19,8 +19,7 @@ app.get('/contests', async (req, res) => {
       query.andWhere(new (require('typeorm').Brackets)(qb => {
         qb.where(qb => {
           let subQuery = syzoj.model('contest-group').createQueryBuilder('cg')
-            .select('cg.contest_id')
-            .where('1=1');
+            .select('cg.contest_id');
           return 'Contest.id NOT IN (' + subQuery.getQuery() + ')';
         })
         .orWhere(qb => {
