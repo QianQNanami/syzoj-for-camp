@@ -1,0 +1,413 @@
+<% include header %>
+<style>
+#gameDiv {
+    margin-top: 20px;
+}
+.playingCard_black, .playingCard_red, .playingCard_black_opponent, .playingCard_red_opponent {
+    display: inline-block;
+    width: 60px;
+    height: 90px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    margin: 5px;
+    padding: 10px;
+    font-size: 1.2em;
+    font-weight: bold;
+    text-align: center;
+    background-color: white;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+}
+.playingCard_black, .playingCard_black_opponent { color: black; }
+.playingCard_red, .playingCard_red_opponent { color: red; }
+.blankCard {
+    display: inline-block;
+    width: 60px;
+    height: 90px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    margin: 5px;
+    background-color: #eee;
+}
+.opponentCard {
+    margin-bottom: 10px;
+}
+.menuButtons {
+    margin-bottom: 5px;
+    width: 100%;
+}
+</style>
+
+<div id="mainContent" class="ui segment">
+    <h2 class="ui header">Texas Hold 'em Poker</h2>
+    <p>Welcome to Texas Hold 'em Poker! Host a game and give the code to friends so they can join and play.</p>
+    <div class="ui center aligned basic segment">
+        <button id="hostButton" class="ui large primary button">Host Game</button>
+        <button id="joinButton" class="ui large secondary button">Join Game</button>
+    </div>
+</div>
+
+<div id="gameDiv" style="display: none;">
+    <div class="ui grid">
+        <div class="four wide column">
+            <div id="playerInformationCard" class="ui card fluid">
+                <div class="content">
+                    <div class="header" id="usernamesCards">My Cards</div>
+                    <div class="description" id="mycards"></div>
+                </div>
+                <div class="extra content" id="selfMoneyArea">
+                    <div id="usernamesMoney" style="font-size: 1.5em; font-weight: bold;"></div>
+                    <div id="blindStatus"></div>
+                    <div id="status"></div>
+                </div>
+            </div>
+            
+            <div class="ui segment">
+                <div id="playNext"></div>
+                <button onClick="fold()" id="usernameFold" class="ui red button menuButtons" style="display:none;">Fold</button>
+                <button onClick="check()" id="usernameCheck" class="ui button menuButtons" style="display:none;">Check</button>
+                <button onClick="updateBetModal()" id="usernameBet" class="ui green button menuButtons" style="display:none;">Bet</button>
+                <button onClick="call()" id="usernameCall" class="ui blue button menuButtons" style="display:none;">Call</button>
+                <button onClick="updateRaiseModal()" id="usernameRaise" class="ui orange button menuButtons" style="display:none;">Raise</button>
+            </div>
+        </div>
+        
+        <div class="twelve wide column">
+            <div class="ui segment">
+                <h3 class="ui header" id="table-title"></h3>
+                <div id="communityCards" class="ui basic segment center aligned"></div>
+            </div>
+            
+            <div class="ui segment">
+                <h4 class="ui dividing header">Opponents</h4>
+                <div id="opponentCards" class="ui cards"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+<div class="ui modal" id="hostModal">
+    <div class="header">Host Game</div>
+    <div class="content">
+        <div id="hostModalContent">
+            <p>Ready to start a game? Click the button below to get a room code.</p>
+            <input type="hidden" id="hostName-field" value="<%= user.username %>">
+            <button onclick="beginHost()" class="ui primary button">Get Code</button>
+        </div>
+        <div id="playersNames" class="ui list"></div>
+        <div id="startGameArea" style="margin-top: 10px;"></div>
+    </div>
+    <div class="actions">
+        <div class="ui cancel button">Close</div>
+    </div>
+</div>
+
+<div class="ui modal" id="joinModal">
+    <div class="header">Join Game</div>
+    <div class="content">
+        <div id="joinModalContent">
+            <p>Enter the code provided by the host to join their room:</p>
+            <div class="ui form">
+                <input type="hidden" id="joinName-field" value="<%= user.username %>">
+                <div class="field">
+                    <label>Code</label>
+                    <input type="text" id="code-field" placeholder="4-digit code">
+                </div>
+                <button onclick="joinRoom()" class="ui primary button">Join Game</button>
+            </div>
+        </div>
+        <div id="playersNamesJoined" class="ui list"></div>
+        <div id="startGameAreaDisconnectSituation" style="margin-top: 10px;"></div>
+    </div>
+    <div class="actions">
+        <div class="ui cancel button">Close</div>
+    </div>
+</div>
+
+<div class="ui modal" id="betModal">
+    <div class="header">Place Bet</div>
+    <div class="content">
+        <div id="betDisplay"><h3 class="ui center aligned header">$0</h3></div>
+        <div class="ui form">
+            <div class="field">
+                <label>Bet Amount</label>
+                <div class="ui input">
+                    <input type="number" id="betAmountInput" placeholder="Enter amount" oninput="validateBetInput()">
+                </div>
+                <p id="betRangeHint" style="margin-top: 5px; color: #666;"></p>
+            </div>
+        </div>
+    </div>
+    <div class="actions">
+        <button id="confirmBetBtn" onclick="bet()" class="ui green button">Confirm Bet</button>
+        <div class="ui cancel button">Cancel</div>
+    </div>
+</div>
+
+<div class="ui modal" id="raiseModal">
+    <div class="header">Raise Bet</div>
+    <div class="content">
+        <div id="raiseDisplay"><h3 class="ui center aligned header">Raise top bet</h3></div>
+        <div class="ui form">
+            <div class="field">
+                <label>Total Amount to Raise To</label>
+                <div class="ui input">
+                    <input type="number" id="raiseAmountInput" placeholder="Enter amount" oninput="validateRaiseInput()">
+                </div>
+                <p id="raiseRangeHint" style="margin-top: 5px; color: #666;"></p>
+            </div>
+        </div>
+    </div>
+    <div class="actions">
+        <button id="confirmRaiseBtn" onclick="raise()" class="ui orange button">Confirm Raise</button>
+        <div class="ui cancel button">Cancel</div>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+var socket = io('/poker_socket');
+var currentUser = "<%= user.username %>";
+
+$(document).ready(function () {
+    $('#hostButton').click(function() { $('#hostModal').modal('show'); });
+    $('#joinButton').click(function() { $('#joinModal').modal('show'); });
+});
+
+socket.on('playerDisconnected', function (data) {
+    alert(data.player + ' disconnected.');
+});
+
+socket.on('hostRoom', function (data) {
+    if (data != undefined) {
+        let content = '<h5>Code: <code>' + data.code + '</code></h5>';
+        if (data.players.length >= 11) content += '<p class="ui red text">Warning: Room is full (max 11).</p>';
+        content += '<h5>Players Currently in My Room</h5>';
+        $('#hostModalContent').html(content);
+        $('#playersNames').html(data.players.map(p => '<div class="item">' + p + '</div>').join(''));
+        
+        if (data.players.length > 1) {
+            $('#startGameArea').html('<button onclick="startGame(\'' + data.code + '\')" class="ui green fluid button">Start Game</button>');
+        }
+    } else {
+        alert('Error hosting room.');
+    }
+});
+
+socket.on('hostRoomUpdate', function (data) {
+    $('#playersNames').html(data.players.map(p => '<div class="item">' + p + '</div>').join(''));
+    if (data.players.length <= 1) $('#startGameArea').empty();
+});
+
+socket.on('joinRoom', function (data) {
+    if (data == undefined) {
+        $('#joinModal').modal('hide');
+        alert("Invalid code or username already taken.");
+    } else {
+        $('#joinModalContent').html('<h5>' + data.host + "'s room</h5><hr /><p>Please wait until your host starts the game.</p>");
+        $('#playersNamesJoined').html(data.players.map(p => '<div class="item">' + p + '</div>').join(''));
+    }
+});
+
+socket.on('joinRoomUpdate', function (data) {
+    $('#playersNamesJoined').html(data.players.map(p => '<div class="item">' + p + '</div>').join(''));
+});
+
+socket.on('gameBegin', function (data) {
+    $('#joinModal').modal('hide');
+    $('#hostModal').modal('hide');
+    if (data == undefined) alert('Error - invalid game.');
+    else {
+        $('#mainContent').hide();
+        $('#gameDiv').show();
+    }
+});
+
+socket.on('dealt', function (data) {
+    $('#mycards').html(data.cards.map(renderCard).join(''));
+    $('#usernamesCards').text(data.username + ' - My Cards');
+});
+
+socket.on('rerender', function (data) {
+    if (data.myBet == 0) $('#usernamesCards').text(data.username + ' - My Cards');
+    else $('#usernamesCards').text(data.username + ' - My Bet: $' + data.myBet);
+    
+    if (data.community != undefined) $('#communityCards').html(data.community.map(renderCard).join(''));
+    else $('#communityCards').empty();
+    
+    $('#table-title').text('Round ' + data.round + ' | ' + data.stage + ' | Top Bet: $' + data.topBet + ' | Pot: $' + data.pot);
+    
+    $('#opponentCards').html(data.players.filter(p => p.username !== currentUser).map(p => {
+        return renderOpponent(p.username, p, data.bets);
+    }).join(''));
+    
+    renderSelf({
+        money: data.myMoney,
+        text: data.myStatus,
+        blind: data.myBlind,
+        bets: data.bets,
+        buyIns: data.buyIns
+    });
+    
+    if (!data.roundInProgress) {
+        $('.menuButtons').hide();
+    }
+});
+
+socket.on('reveal', function (data) {
+    $('.menuButtons').hide();
+    $('#table-title').text('Hand Winner(s): ' + data.winners);
+    $('#playNext').html('<button onClick="playNext()" class="ui fluid primary button">Start Next Round</button>');
+    $('#blindStatus').text(data.hand);
+    $('#usernamesMoney').text('$' + data.money);
+    
+    $('#opponentCards').html(data.cards.filter(p => p.username !== currentUser).map(p => {
+        return renderOpponentCards(p.username, p, data.bets);
+    }).join(''));
+});
+
+socket.on('endHand', function (data) {
+    $('.menuButtons').hide();
+    $('#table-title').text(data.winner + ' takes the pot of $' + data.pot);
+    $('#playNext').html('<button onClick="playNext()" class="ui fluid primary button">Start Next Round</button>');
+    $('#usernamesMoney').text('$' + data.money);
+    if (data.folded == 'Fold') {
+        $('#status').text('You Folded');
+        $('#playerInformationCard').addClass('secondary');
+    }
+});
+
+// Game Actions
+function beginHost() { socket.emit('host', { username: currentUser }); }
+function joinRoom() { socket.emit('join', { code: $('#code-field').val(), username: currentUser }); }
+function startGame(code) { socket.emit('startGame', { code: code }); }
+function playNext() { socket.emit('startNextRound', {}); }
+function fold() { socket.emit('moveMade', { move: 'fold', bet: 'Fold' }); }
+function call() { socket.emit('moveMade', { move: 'call', bet: 'Call' }); }
+function check() { socket.emit('moveMade', { move: 'check', bet: 'Check' }); }
+
+var maxBetPossible = 0;
+var minRaisePossible = 0;
+var maxRaisePossible = 0;
+
+function validateBetInput() {
+    let val = parseInt($('#betAmountInput').val());
+    let isValid = !isNaN(val) && val >= 2 && val <= maxBetPossible;
+    $('#confirmBetBtn').toggleClass('disabled', !isValid);
+    $('#betDisplay').html('<h3 class="ui center aligned header">' + (isValid && val == maxBetPossible ? 'All-In ' : '') + '$' + (isNaN(val) ? 0 : val) + '</h3>');
+}
+
+function validateRaiseInput() {
+    let val = parseInt($('#raiseAmountInput').val());
+    let isValid = !isNaN(val) && val >= minRaisePossible && val <= maxRaisePossible;
+    $('#confirmRaiseBtn').toggleClass('disabled', !isValid);
+    $('#raiseDisplay').html('<h3 class="ui center aligned header">Raise top bet to $' + (isNaN(val) ? 0 : val) + '</h3>');
+}
+
+function bet() {
+    let val = parseInt($('#betAmountInput').val());
+    if (isNaN(val) || val < 2 || val > maxBetPossible) return alert('Invalid bet amount.');
+    socket.emit('moveMade', { move: 'bet', bet: val });
+    $('#betModal').modal('hide');
+}
+
+function raise() {
+    let val = parseInt($('#raiseAmountInput').val());
+    if (isNaN(val) || val < minRaisePossible || val > maxRaisePossible) return alert('Invalid raise amount.');
+    socket.emit('moveMade', { move: 'raise', bet: val });
+    $('#raiseModal').modal('hide');
+}
+
+// Rendering helpers
+function renderCard(card) {
+    let color = (card.suit == '♠' || card.suit == '♣') ? 'black' : 'red';
+    return '<div class="playingCard_' + color + '">' + card.value + ' ' + card.suit + '</div>';
+}
+
+function renderOpponent(name, p, bets) {
+    let currentBet = 0;
+    if (bets && bets.length) {
+        let lastStage = bets[bets.length - 1];
+        let found = lastStage.find(b => b.player === name);
+        if (found) currentBet = found.bet;
+    }
+    
+    let color = (p.text === 'Their Turn') ? 'yellow' : (p.text === 'Fold' ? 'secondary' : '');
+    return '<div class="ui card ' + color + '">' +
+           '<div class="content"><div class="header">' + name + (p.text === 'Fold' ? ' (Fold)' : '') + '</div>' +
+           '<div class="meta">' + (p.blind || '') + ' ' + (p.text || '') + '</div>' +
+           '<div class="description"><div class="blankCard"></div><div class="blankCard"></div></div></div>' +
+           '<div class="extra content">$' + p.money + (currentBet > 0 ? ' | Bet: $' + currentBet : '') + '</div></div>';
+}
+
+function renderOpponentCards(name, p, bets) {
+    let currentBet = 0;
+    if (bets && bets.length) {
+        let lastStage = bets[bets.length - 1];
+        let found = lastStage.find(b => b.player === name);
+        if (found) currentBet = found.bet;
+    }
+    return '<div class="ui card">' +
+           '<div class="content"><div class="header">' + name + '</div>' +
+           '<div class="meta">' + (p.hand || '') + '</div>' +
+           '<div class="description">' + (p.folded ? '<div class="blankCard"></div><div class="blankCard"></div>' : p.cards.map(renderCard).join('')) + '</div></div>' +
+           '<div class="extra content">$' + p.money + (currentBet > 0 ? ' | Bet: $' + currentBet : '') + '</div></div>';
+}
+
+function renderSelf(data) {
+    $('#playNext').empty();
+    $('#usernamesMoney').text('$' + data.money);
+    $('#playerInformationCard').removeClass('yellow secondary green');
+    
+    if (data.text == 'Their Turn') {
+        $('#playerInformationCard').addClass('yellow');
+        $('#status').text('My Turn');
+        socket.emit('evaluatePossibleMoves', {});
+    } else if (data.text == 'Fold') {
+        $('#status').text('You Folded');
+        $('#playerInformationCard').addClass('secondary');
+        $('.menuButtons').hide();
+    } else {
+        $('#playerInformationCard').addClass('green');
+        $('#status').empty();
+        $('.menuButtons').hide();
+    }
+    $('#blindStatus').text(data.blind);
+}
+
+function updateBetModal() {
+    let money = parseInt($('#usernamesMoney').text().replace('$', ''));
+    maxBetPossible = money;
+    $('#betAmountInput').val(2);
+    $('#betRangeHint').text('Min: $2, Max: $' + money);
+    validateBetInput();
+    $('#betModal').modal('show');
+}
+
+function updateRaiseDisplay() {
+    validateRaiseInput();
+}
+
+socket.on('updateRaiseModal', function (data) {
+    minRaisePossible = data.topBet;
+    maxRaisePossible = data.usernameMoney;
+    $('#raiseAmountInput').val(data.topBet);
+    $('#raiseRangeHint').text('Min: $' + data.topBet + ', Max: $' + data.usernameMoney);
+    validateRaiseInput();
+    $('#raiseModal').modal('show');
+});
+
+function updateRaiseModal() { socket.emit('raiseModalData', {}); }
+
+socket.on('displayPossibleMoves', function (data) {
+    if (data.fold == 'yes') $('#usernameFold').show(); else $('#usernameFold').hide();
+    if (data.check == 'yes') $('#usernameCheck').show(); else $('#usernameCheck').hide();
+    if (data.bet == 'yes') $('#usernameBet').show(); else $('#usernameBet').hide();
+    if (data.call != 'no') {
+        $('#usernameCall').show().text(data.call == 'all-in' ? 'Call All-In' : 'Call $' + data.call);
+    } else $('#usernameCall').hide();
+    if (data.raise == 'yes') $('#usernameRaise').show(); else $('#usernameRaise').hide();
+});
+</script>
+
+<% include footer %>
