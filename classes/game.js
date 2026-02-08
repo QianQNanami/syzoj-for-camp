@@ -146,6 +146,7 @@ const Game = function (name, host) {
     }
 
     this.roundNum++;
+    this.broadcastLog(`<b>Round ${this.roundNum} started.</b> Stage: ${this.getStageName()}`);
     this.rerender();
   };
 
@@ -298,6 +299,7 @@ const Game = function (name, host) {
       }
     }
     this.roundData.bets.push([]);
+    this.broadcastLog(`<b>Stage: ${this.getStageName()}</b> (Pot: $${this.getCurrentPot()})`);
   };
 
   this.moveOntoNextPlayer = () => {
@@ -500,6 +502,7 @@ const Game = function (name, host) {
       p.player.money += p.gain;
       if (p.gain > 0) {
         p.winner = true;
+        this.broadcastLog(`<b>${p.player.getUsername()} won $${p.gain.toFixed(2)}</b> (Net: ${p.result.toFixed(2)})`);
       }
     }
 
@@ -630,6 +633,7 @@ const Game = function (name, host) {
 
         // Winner (Non-folder)
         const winnerUser = await User.fromName(nonFolderPlayer.getUsername());
+        this.broadcastLog(`<b>${nonFolderPlayer.getUsername()} wins the pot of $${pot} (All others folded).</b>`);
         if (winnerUser) {
           winnerUser.rating = (winnerUser.rating || 0) + Math.round(pot * MULTIPLIER);
           await winnerUser.save();
@@ -838,6 +842,10 @@ const Game = function (name, host) {
     }
   };
 
+  this.broadcastLog = (message) => {
+    this.emitPlayers('gameLog', { message: message });
+  };
+
   this.findPlayer = (socketId) => {
     for (let pn = 0; pn < this.getNumPlayers(); pn++) {
       if (this.players[pn].socket.id === socketId) {
@@ -896,6 +904,7 @@ const Game = function (name, host) {
       preFoldBetAmount += roundDataStage.bet;
     }
     player.setStatus('Fold');
+    this.broadcastLog(`${player.getUsername()} folded.`);
     this.foldPot = this.foldPot + preFoldBetAmount;
     if (
       this.getCurrentRoundBets().some((a) => a.player == player.getUsername())
@@ -964,6 +973,7 @@ const Game = function (name, host) {
         }
       }
       this.moveOntoNextPlayer();
+      this.broadcastLog(`${player.getUsername()} called (Total bet: $${this.getPlayerBetInStage(player)}).`);
       return true;
     } else {
       if (
@@ -983,6 +993,7 @@ const Game = function (name, host) {
           player.money = 0;
           player.allIn = true;
           this.moveOntoNextPlayer();
+          this.broadcastLog(`${player.getUsername()} called All-In (Total bet: $${this.getPlayerBetInStage(player)}).`);
         } else {
           this.setCurrentRoundBets(
             this.getCurrentRoundBets().map((a) =>
@@ -993,6 +1004,7 @@ const Game = function (name, host) {
           );
           player.money = player.money - (topBet - currBet);
           this.moveOntoNextPlayer();
+          this.broadcastLog(`${player.getUsername()} called (Total bet: $${this.getPlayerBetInStage(player)}).`);
         }
         return true;
       } else {
@@ -1017,6 +1029,7 @@ const Game = function (name, host) {
         });
         player.money = player.money - bet;
         if (player.money == 0) player.allIn = true;
+        this.broadcastLog(`${player.getUsername()} bet $${bet}${player.allIn ? ' (All-In)' : ''}.`);
         this.moveOntoNextPlayer();
         return true;
       }
@@ -1048,6 +1061,7 @@ const Game = function (name, host) {
         bet: currBet,
       });
     }
+    this.broadcastLog(`${player.getUsername()} checked.`);
     this.moveOntoNextPlayer();
     return true;
   };
@@ -1084,6 +1098,7 @@ const Game = function (name, host) {
       }
       player.money -= moneyToRemove;
       if (player.money == 0) player.allIn = true;
+      this.broadcastLog(`${player.getUsername()} raised to $${bet}${player.allIn ? ' (All-In)' : ''}.`);
       this.moveOntoNextPlayer();
       return true;
     }

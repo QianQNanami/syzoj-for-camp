@@ -81,6 +81,12 @@
                 <h4 class="ui dividing header">Opponents</h4>
                 <div id="opponentCards" class="ui cards"></div>
             </div>
+
+            <div class="ui segment">
+                <h4 class="ui dividing header">Game Log</h4>
+                <div id="gameLog" style="height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.9em; padding: 5px; background: #f9f9f9; border: 1px solid #ddd;">
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -279,6 +285,12 @@ socket.on('endHand', function (data) {
     }
 });
 
+socket.on('gameLog', function (data) {
+    const logDiv = $('#gameLog');
+    logDiv.append('<div>' + data.message + '</div>');
+    logDiv.scrollTop(logDiv[0].scrollHeight);
+});
+
 // Game Actions
 function beginHost() { socket.emit('host', { username: currentUser }); }
 function joinRoom() { socket.emit('join', { code: $('#code-field').val(), username: currentUser }); }
@@ -334,10 +346,10 @@ function renderOpponent(name, p, bets) {
         if (found) currentBet = found.bet;
     }
     
-    let color = (p.text === 'Their Turn') ? 'yellow' : (p.text === 'Fold' ? 'secondary' : '');
+    let color = (p.status === 'Their Turn') ? 'yellow' : (p.status === 'Fold' ? 'secondary' : '');
     return '<div class="ui card ' + color + '">' +
-           '<div class="content"><div class="header">' + name + (p.text === 'Fold' ? ' (Fold)' : '') + '</div>' +
-           '<div class="meta">' + (p.blind || '') + ' ' + (p.text || '') + '</div>' +
+           '<div class="content"><div class="header">' + name + (p.status === 'Fold' ? ' (Fold)' : '') + '</div>' +
+           '<div class="meta">' + (p.blind || '') + ' ' + (p.status || '') + '</div>' +
            '<div class="description"><div class="blankCard"></div><div class="blankCard"></div></div></div>' +
            '<div class="extra content">$' + p.money + (currentBet > 0 ? ' | Bet: $' + currentBet : '') + '</div></div>';
 }
