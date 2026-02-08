@@ -69,6 +69,12 @@
                 <button onClick="call()" id="usernameCall" class="ui blue button menuButtons" style="display:none;">Call</button>
                 <button onClick="updateRaiseModal()" id="usernameRaise" class="ui orange button menuButtons" style="display:none;">Raise</button>
             </div>
+
+            <div class="ui segment">
+                <h4 class="ui dividing header">Game Log</h4>
+                <div id="gameLog" style="height: 250px; overflow-y: auto; font-family: monospace; font-size: 0.9em; padding: 5px; background: #f9f9f9; border: 1px solid #ddd;">
+                </div>
+            </div>
         </div>
         
         <div class="twelve wide column">
@@ -80,12 +86,6 @@
             <div class="ui segment">
                 <h4 class="ui dividing header">Opponents</h4>
                 <div id="opponentCards" class="ui cards"></div>
-            </div>
-
-            <div class="ui segment">
-                <h4 class="ui dividing header">Game Log</h4>
-                <div id="gameLog" style="height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.9em; padding: 5px; background: #f9f9f9; border: 1px solid #ddd;">
-                </div>
             </div>
         </div>
     </div>
