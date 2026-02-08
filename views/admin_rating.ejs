@@ -22,7 +22,7 @@
   <div class="ui relaxed divided list">
     <% for (const calc of calcs) { %>
       <div class="item">
-        <%= calc.contest.title %>
+        <%= calc.poker_name || (calc.contest && calc.contest.title) || "Unknown" %>
         <button name="calc_id" value="<%= calc.id %>" type="submit" style="color: #000; padding: 0; border: none; background: none;"><i class="remove icon"></i></button>
       </div>
     <% } %>
