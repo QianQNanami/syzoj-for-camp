@@ -15,6 +15,7 @@ const displayConfig = {
   showOthers: true,
   showTestdata: true,
   showDetailResult: true,
+  showDownload: true,
   inContest: false,
   showRejudge: false
 };
@@ -197,8 +198,7 @@ app.get('/submission/:id', async (req, res) => {
     displayConfig.showRejudge = await judge.problem.isAllowedEditBy(res.locals.user);
     const displayConfigCopy = JSON.parse(JSON.stringify(displayConfig));
     if (!curUser || (curUser.user_type !== 'admin' && curUser.user_type !== 'lecturer')) {
-      displayConfigCopy.showTestdata = false;
-      displayConfigCopy.showDetailResult = false;
+      displayConfigCopy.showDownload = false;
     }
 
     res.render('submission', {

@@ -10,7 +10,7 @@ app.get('/poker', async (req, res) => {
     }
 
     res.render('poker', {
-      poker_url: `http://${req.hostname}:3000?username=${res.locals.user.username}`
+      poker_url: `http://${req.hostname}:8080?username=${res.locals.user.username}`
     });
   } catch (e) {
     syzoj.log(e);

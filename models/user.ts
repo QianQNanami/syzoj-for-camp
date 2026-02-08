@@ -90,6 +90,9 @@ export default class User extends Model {
   @TypeORM.Column({ nullable: true, type: "varchar", length: 60 })
   seat: string;
 
+  @TypeORM.Column({ nullable: true, type: "varchar", length: 60 })
+  teacher: string;
+
   static async fromEmail(email): Promise<User> {
     return User.findOne({
       where: {
