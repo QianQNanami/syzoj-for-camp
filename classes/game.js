@@ -347,7 +347,9 @@ const Game = function (name, host) {
           handOver = true;
           const roundResults = this.evaluateWinners();
           for (playerResult of roundResults.playersData) {
-            playerResult.player.setStatus(playerResult.hand.name);
+            const suitMap = { 's': '♠', 'h': '♥', 'd': '♦', 'c': '♣' };
+            const formattedCards = playerResult.hand.cards.map(c => c.value + (suitMap[c.suit] || c.suit)).join(' ');
+            playerResult.player.setStatus(`${playerResult.hand.name} (${formattedCards})`);
           }
           const winningData = this.distributeMoney(roundResults);
           this.revealCards(winningData.filter((a) => a.winner));
