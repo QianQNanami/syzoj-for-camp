@@ -320,7 +320,7 @@ export default class User extends Model {
   }
 
   async setGroup(newGroup) {
-    let oldGroup = await this.getGroup();
+    let oldGroup = (await this.getGroup()).map(x => x.group_id);
 
     let delGroup = oldGroup.filter(x => !newGroup.includes(x));
     let addGroup = newGroup.filter(x => !oldGroup.includes(x));
@@ -331,7 +331,7 @@ export default class User extends Model {
         group_id: group
       } });
 
-      await obj.destroy();
+      if (obj) await obj.destroy();
     }
 
     for (let group of addGroup) {
