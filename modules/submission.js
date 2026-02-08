@@ -98,6 +98,10 @@ app.get('/submissions', async (req, res) => {
       } else {
         query.andWhere('is_public = true');
       }
+
+      if (curUser && curUser.user_type === 'student') {
+        query.andWhere('user_id = :cur_user_id', { cur_user_id: curUser.id });
+      }
     } else if (req.query.problem_id) {
       query.andWhere('problem_id = :problem_id', { problem_id: parseInt(req.query.problem_id) || 0 });
       isFiltered = true;
@@ -191,19 +195,25 @@ app.get('/submission/:id', async (req, res) => {
     }
 
     displayConfig.showRejudge = await judge.problem.isAllowedEditBy(res.locals.user);
+    const displayConfigCopy = JSON.parse(JSON.stringify(displayConfig));
+    if (!curUser || (curUser.user_type !== 'admin' && curUser.user_type !== 'lecturer')) {
+      displayConfigCopy.showTestdata = false;
+      displayConfigCopy.showDetailResult = false;
+    }
+
     res.render('submission', {
-      info: getSubmissionInfo(judge, displayConfig),
-      roughResult: getRoughResult(judge, displayConfig, false),
+      info: getSubmissionInfo(judge, displayConfigCopy),
+      roughResult: getRoughResult(judge, displayConfigCopy, false),
       code: (judge.problem.type !== 'submit-answer') ? judge.code.toString("utf8") : '',
       formattedCode: judge.formattedCode ? judge.formattedCode.toString("utf8") : null,
       preferFormattedCode: res.locals.user ? res.locals.user.prefer_formatted_code : true,
-      detailResult: processOverallResult(judge.result, displayConfig),
+      detailResult: processOverallResult(judge.result, displayConfigCopy),
       socketToken: (judge.pending && judge.task_id != null) ? jwt.sign({
         taskId: judge.task_id,
         type: 'detail',
-        displayConfig: displayConfig
+        displayConfig: displayConfigCopy
       }, syzoj.config.session_secret) : null,
-      displayConfig: displayConfig,
+      displayConfig: displayConfigCopy,
     });
   } catch (e) {
     syzoj.log(e);

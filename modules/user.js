@@ -103,7 +103,12 @@ app.get('/user/:id', async (req, res) => {
     user.emailVisible = user.public_email || user.allowedEdit;
 
     let userGroups = await user.getGroup();
-    let groupNames = (await userGroups.mapAsync(async g => (await syzoj.model('group').findOne({ where: { group_id: g.group_id } })).group_name)).join(', ');
+    let groupIds = userGroups.map(g => g.group_id);
+    let groupNames = "";
+    if (groupIds.length > 0) {
+      let groups = await syzoj.model('group').findByIds(groupIds);
+      groupNames = groups.map(g => g.group_name).join(', ');
+    }
 
     const ratingHistoryValues = await RatingHistory.find({
       where: { user_id: user.id },

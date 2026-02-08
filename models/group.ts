@@ -6,7 +6,7 @@ import ContestGroup from "./contest-group";
 import UserGroup from "./user-group";
 import ProblemGroup from "./problem-group";
 
-@TypeORM.Entity()
+@TypeORM.Entity("`group`")
 export default class Group extends Model {
   @TypeORM.Index({ unique: true })
   @TypeORM.PrimaryColumn({ type: "integer" })
