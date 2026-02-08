@@ -64,7 +64,7 @@
             <a class="item<% if (active.startsWith('ranklist')) { %> active<% } %>" href="/ranklist"><i class="signal icon"></i> 排名</a>
             <a class="item<% if (active.startsWith('discussion') || active.startsWith('article')) { %> active<% } %>" href="/discussion/global"><i class="comments icon"></i> 讨论</a>
             <a class="item<% if (active.startsWith('help')) { %> active<% } %>" href="/help"><i class="help circle icon"></i> 帮助</a>
-            <% if (user && (user.is_admin || user.user_type === 'lecturer')) { %>
+            <% if (user && (user.is_admin || user.user_type === 'admin' || user.user_type === 'lecturer')) { %>
               <a class="item<% if (active.startsWith('poker')) { %> active<% } %>" href="/poker"><i class="heart icon"></i> Poker</a>
             <% } %>
             <% if (typeof contest !== 'undefined' && contest && contest.id) { %>
