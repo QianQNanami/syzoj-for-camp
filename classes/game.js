@@ -499,19 +499,45 @@ const Game = function (name, host) {
       if (p.gain > 0) {
         p.winner = true;
       }
-      
-      // SYZOJ Rating Integration
-      if (p.result !== 0) {
-        const User = syzoj.model('user');
-        const change = Math.round(p.result);
-        User.fromName(p.player.getUsername()).then(user => {
-            if (user) {
-                user.rating = (user.rating || 0) + change;
-                return user.save();
-            }
-        }).catch(err => console.error(`Failed to update rating for ${p.player.getUsername()}: ${err.message}`));
-      }
     }
+
+    // SYZOJ Rating Integration
+    (async () => {
+      try {
+        const RatingCalculation = syzoj.model('rating_calculation');
+        const RatingHistory = syzoj.model('rating_history');
+        const User = syzoj.model('user');
+        
+        // Multiplier: 10
+        const MULTIPLIER = 10;
+
+        for (const p of playerInvestments) {
+          const user = await User.fromName(p.player.getUsername());
+          if (!user) continue;
+
+          const change = Math.round(p.result * MULTIPLIER);
+          user.rating = (user.rating || 0) + change;
+          await user.save();
+
+          // Create Rating Record
+          const calc = await RatingCalculation.create({
+            poker_name: `poker game: ${p.player.getStatus() || 'Showdown'}`
+          });
+          await calc.save();
+
+          const history = await RatingHistory.create({
+            rating_calculation_id: calc.id,
+            user_id: user.id,
+            rating_after: user.rating,
+            rank: p.winner ? 1 : 2 // Simplified rank
+          });
+          await history.save();
+        }
+      } catch (err) {
+        console.error(`Failed to update poker rating: ${err.message}`);
+      }
+    })();
+
     return playerInvestments;
   };
 
@@ -589,32 +615,61 @@ const Game = function (name, host) {
     this.roundInProgress = false;
     
     // SYZOJ Rating Integration for all-fold case
-    const [numNonFolds, nonFolderPlayer] = this.getNonFoldedPlayer();
-    if (nonFolderPlayer) {
-      const pot = this.getCurrentPot();
-      const User = syzoj.model('user');
-      
-      User.fromName(nonFolderPlayer.getUsername()).then(user => {
-          if (user) {
-              user.rating = (user.rating || 0) + Math.round(pot);
-              return user.save();
-          }
-      }).catch(err => console.error(`Failed to update rating for ${nonFolderPlayer.getUsername()}: ${err.message}`));
+    (async () => {
+      try {
+        const [numNonFolds, nonFolderPlayer] = this.getNonFoldedPlayer();
+        if (!nonFolderPlayer) return;
 
-      for (const p of this.players) {
-        if (p !== nonFolderPlayer) {
-          const invested = this.getPlayerBetInStage(p);
-          if (invested > 0) {
-            User.fromName(p.getUsername()).then(user => {
-                if (user) {
-                    user.rating = (user.rating || 0) - Math.round(invested);
-                    return user.save();
-                }
-            }).catch(err => console.error(`Failed to update rating for ${p.getUsername()}: ${err.message}`));
+        const RatingCalculation = syzoj.model('rating_calculation');
+        const RatingHistory = syzoj.model('rating_history');
+        const User = syzoj.model('user');
+        const MULTIPLIER = 10;
+        const pot = this.getCurrentPot();
+
+        // Winner (Non-folder)
+        const winnerUser = await User.fromName(nonFolderPlayer.getUsername());
+        if (winnerUser) {
+          winnerUser.rating = (winnerUser.rating || 0) + Math.round(pot * MULTIPLIER);
+          await winnerUser.save();
+
+          const calc = await RatingCalculation.create({ poker_name: `poker game: Winner (Folds)` });
+          await calc.save();
+          const history = await RatingHistory.create({
+            rating_calculation_id: calc.id,
+            user_id: winnerUser.id,
+            rating_after: winnerUser.rating,
+            rank: 1
+          });
+          await history.save();
+        }
+
+        // Losers (Folders who invested)
+        for (const p of this.players) {
+          if (p !== nonFolderPlayer) {
+            const invested = this.getTotalInvested(p);
+            if (invested > 0) {
+              const loserUser = await User.fromName(p.getUsername());
+              if (loserUser) {
+                loserUser.rating = (loserUser.rating || 0) - Math.round(invested * MULTIPLIER);
+                await loserUser.save();
+
+                const calc = await RatingCalculation.create({ poker_name: `poker game: Fold` });
+                await calc.save();
+                const history = await RatingHistory.create({
+                  rating_calculation_id: calc.id,
+                  user_id: loserUser.id,
+                  rating_after: loserUser.rating,
+                  rank: 2
+                });
+                await history.save();
+              }
+            }
           }
         }
+      } catch (err) {
+        console.error(`Failed to update poker rating (fold): ${err.message}`);
       }
-    }
+    })();
 
     let cardData = [];
     for (let i = 0; i < this.players.length; i++) {

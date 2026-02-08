@@ -152,7 +152,9 @@ global.syzoj = {
     this.loadModules();
     
     const { initializePoker } = require('./modules/poker_socket');
-    initializePoker(require('socket.io')(app.server));
+    const io = require('socket.io')(app.server);
+    initializePoker(io);
+    syzoj.socketIO = io;
 
     if (!module.parent) {
       // Loaded by node CLI, not by `require()`.
