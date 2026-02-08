@@ -130,12 +130,16 @@
         <div id="betDisplay"><h3 class="ui center aligned header">$0</h3></div>
         <div class="ui form">
             <div class="field">
-                <input type="range" id="betRangeSlider" min="0" max="100" value="0" oninput="updateBetDisplay()">
+                <label>Bet Amount</label>
+                <div class="ui input">
+                    <input type="number" id="betAmountInput" placeholder="Enter amount" oninput="validateBetInput()">
+                </div>
+                <p id="betRangeHint" style="margin-top: 5px; color: #666;"></p>
             </div>
         </div>
     </div>
     <div class="actions">
-        <button onclick="bet()" class="ui green ok button">Confirm Bet</button>
+        <button id="confirmBetBtn" onclick="bet()" class="ui green button">Confirm Bet</button>
         <div class="ui cancel button">Cancel</div>
     </div>
 </div>
@@ -146,12 +150,16 @@
         <div id="raiseDisplay"><h3 class="ui center aligned header">Raise top bet</h3></div>
         <div class="ui form">
             <div class="field">
-                <input type="range" id="raiseRangeSlider" min="0" max="100" value="0" oninput="updateRaiseDisplay()">
+                <label>Total Amount to Raise To</label>
+                <div class="ui input">
+                    <input type="number" id="raiseAmountInput" placeholder="Enter amount" oninput="validateRaiseInput()">
+                </div>
+                <p id="raiseRangeHint" style="margin-top: 5px; color: #666;"></p>
             </div>
         </div>
     </div>
     <div class="actions">
-        <button onclick="raise()" class="ui orange ok button">Confirm Raise</button>
+        <button id="confirmRaiseBtn" onclick="raise()" class="ui orange button">Confirm Raise</button>
         <div class="ui cancel button">Cancel</div>
     </div>
 </div>
@@ -277,14 +285,37 @@ function playNext() { socket.emit('startNextRound', {}); }
 function fold() { socket.emit('moveMade', { move: 'fold', bet: 'Fold' }); }
 function call() { socket.emit('moveMade', { move: 'call', bet: 'Call' }); }
 function check() { socket.emit('moveMade', { move: 'check', bet: 'Check' }); }
-function bet() {
-    let val = parseInt($('#betRangeSlider').val());
-    if (val < 2) alert('Minimum bet is $2.');
-    else socket.emit('moveMade', { move: 'bet', bet: val });
+
+var maxBetPossible = 0;
+var minRaisePossible = 0;
+var maxRaisePossible = 0;
+
+function validateBetInput() {
+    let val = parseInt($('#betAmountInput').val());
+    let isValid = !isNaN(val) && val >= 2 && val <= maxBetPossible;
+    $('#confirmBetBtn').toggleClass('disabled', !isValid);
+    $('#betDisplay').html('<h3 class="ui center aligned header">' + (isValid && val == maxBetPossible ? 'All-In ' : '') + '$' + (isNaN(val) ? 0 : val) + '</h3>');
 }
+
+function validateRaiseInput() {
+    let val = parseInt($('#raiseAmountInput').val());
+    let isValid = !isNaN(val) && val >= minRaisePossible && val <= maxRaisePossible;
+    $('#confirmRaiseBtn').toggleClass('disabled', !isValid);
+    $('#raiseDisplay').html('<h3 class="ui center aligned header">Raise top bet to $' + (isNaN(val) ? 0 : val) + '</h3>');
+}
+
+function bet() {
+    let val = parseInt($('#betAmountInput').val());
+    if (isNaN(val) || val < 2 || val > maxBetPossible) return alert('Invalid bet amount.');
+    socket.emit('moveMade', { move: 'bet', bet: val });
+    $('#betModal').modal('hide');
+}
+
 function raise() {
-    let val = parseInt($('#raiseRangeSlider').val());
+    let val = parseInt($('#raiseAmountInput').val());
+    if (isNaN(val) || val < minRaisePossible || val > maxRaisePossible) return alert('Invalid raise amount.');
     socket.emit('moveMade', { move: 'raise', bet: val });
+    $('#raiseModal').modal('hide');
 }
 
 // Rendering helpers
@@ -344,25 +375,25 @@ function renderSelf(data) {
     $('#blindStatus').text(data.blind);
 }
 
-function updateBetDisplay() {
-    let val = $('#betRangeSlider').val();
-    $('#betDisplay').html('<h3 class="ui center aligned header">' + (val == $('#usernamesMoney').text().replace('$','') ? 'All-In ' : '') + '$' + val + '</h3>');
-}
-
 function updateBetModal() {
     let money = parseInt($('#usernamesMoney').text().replace('$', ''));
-    $('#betRangeSlider').attr({ max: money, min: 0 }).val(0);
-    updateBetDisplay();
+    maxBetPossible = money;
+    $('#betAmountInput').val(2);
+    $('#betRangeHint').text('Min: $2, Max: $' + money);
+    validateBetInput();
     $('#betModal').modal('show');
 }
 
 function updateRaiseDisplay() {
-    $('#raiseDisplay').html('<h3 class="ui center aligned header">Raise top bet to $' + $('#raiseRangeSlider').val() + '</h3>');
+    validateRaiseInput();
 }
 
 socket.on('updateRaiseModal', function (data) {
-    $('#raiseRangeSlider').attr({ max: data.usernameMoney, min: data.topBet }).val(data.topBet);
-    updateRaiseDisplay();
+    minRaisePossible = data.topBet;
+    maxRaisePossible = data.usernameMoney;
+    $('#raiseAmountInput').val(data.topBet);
+    $('#raiseRangeHint').text('Min: $' + data.topBet + ', Max: $' + data.usernameMoney);
+    validateRaiseInput();
     $('#raiseModal').modal('show');
 });
 
