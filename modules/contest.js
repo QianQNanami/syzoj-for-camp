@@ -157,6 +157,65 @@ app.post('/contest/:id/edit', async (req, res) => {
   }
 });
 
+app.get('/contest/:id/export_all', async (req, res) => {
+  try {
+    if (!res.locals.user || (!res.locals.user.is_admin && res.locals.user.user_type !== 'admin')) {
+      throw new ErrorMessage('您没有权限进行此操作。');
+    }
+
+    let contest_id = parseInt(req.params.id);
+    let contest = await Contest.findById(contest_id);
+    if (!contest) throw new ErrorMessage('无此比赛。');
+
+    let problems_id = await contest.getProblems();
+    let problems = await problems_id.mapAsync(async id => await Problem.findById(id));
+
+    let tmp = require('tmp-promise');
+    let fs = require('fs-extra');
+    let path = require('path');
+    let p7zip = new (require('node-7z'));
+
+    let dir = await tmp.dir({ unsafeCleanup: true });
+    let rootPath = path.join(dir.path, contest.title.replace(/[\\/:*?"<>|]/g, '_'));
+    await fs.ensureDir(rootPath);
+
+    for (let i = 0; i < problems.length; i++) {
+      let problem = problems[i];
+      let problemDirName = `${i + 1} - ${problem.title.replace(/[\\/:*?"<>|]/g, '_')}`;
+      let problemPath = path.join(rootPath, problemDirName);
+      await fs.ensureDir(problemPath);
+
+      // Statement
+      let statement = `# ${problem.title}\n\n`;
+      if (problem.description) statement += `## 题目描述\n\n${problem.description}\n\n`;
+      if (problem.input_format) statement += `## 输入格式\n\n${problem.input_format}\n\n`;
+      if (problem.output_format) statement += `## 输出格式\n\n${problem.output_format}\n\n`;
+      if (problem.example) statement += `## 样例\n\n${problem.example}\n\n`;
+      if (problem.limit_and_hint) statement += `## 数据范围与提示\n\n${problem.limit_and_hint}\n\n`;
+      await fs.writeFile(path.join(problemPath, 'statement.md'), statement);
+
+      // Testdata
+      let testdataPath = problem.getTestdataPath();
+      if (await fs.exists(testdataPath)) {
+        await fs.copy(testdataPath, path.join(problemPath, 'testdata'));
+      }
+    }
+
+    let zipFile = await tmp.file({ postfix: '.zip' });
+    await p7zip.add(zipFile.path, rootPath, { recursive: true });
+
+    res.download(zipFile.path, `${contest.title}.zip`, async (err) => {
+      await dir.cleanup();
+      await zipFile.cleanup();
+    });
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
 app.get('/contest/:id', async (req, res) => {
   try {
     const curUser = res.locals.user;
