@@ -27,6 +27,17 @@
     border-radius: 5px;
     margin: 5px;
     background-color: #eee;
+    position: relative;
+}
+.foldedCard::after {
+    content: '×';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 60px;
+    color: rgba(255, 0, 0, 0.6);
+    font-weight: normal;
 }
 .opponentCard {
     margin-bottom: 10px;
@@ -68,9 +79,10 @@
                 <button onClick="updateBetModal()" id="usernameBet" class="ui green button menuButtons" style="display:none;">Bet</button>
                 <button onClick="call()" id="usernameCall" class="ui blue button menuButtons" style="display:none;">Call</button>
                 <button onClick="updateRaiseModal()" id="usernameRaise" class="ui orange button menuButtons" style="display:none;">Raise</button>
-            </div>
+                <button onClick="allIn()" id="usernameAllIn" class="ui purple button menuButtons" style="display:none;">All In</button>
+                
+                <button onClick="exitGame()" id="exitGameBtn" class="ui black fluid button" style="margin-top: 10px;">Exit Game</button>
 
-            <div class="ui segment">
                 <h4 class="ui dividing header">Game Log</h4>
                 <div id="gameLog" style="height: 250px; overflow-y: auto; font-family: monospace; font-size: 0.9em; padding: 5px; background: #f9f9f9; border: 1px solid #ddd;">
                 </div>
@@ -235,6 +247,7 @@ socket.on('dealt', function (data) {
 });
 
 socket.on('rerender', function (data) {
+    window.currentMyBetInStage = data.myBet;
     if (data.myBet == 0) $('#usernamesCards').text(data.username + ' - My Cards');
     else $('#usernamesCards').text(data.username + ' - My Bet: $' + data.myBet);
     
@@ -245,7 +258,24 @@ socket.on('rerender', function (data) {
     let turnText = turnPlayer ? (' | <span style="color: #21ba45;">Current Turn: ' + (turnPlayer.username === currentUser ? 'YOU' : turnPlayer.username) + '</span>') : '';
     $('#table-title').html('Round ' + data.round + ' | ' + data.stage + ' | Top Bet: $' + data.topBet + ' | Pot: $' + data.pot + turnText);
     
-    $('#opponentCards').html(data.players.filter(p => p.username !== currentUser).map(p => {
+    // Sort players based on bet order in current stage
+    let sortedPlayers = [...data.players];
+    const currentStageBets = data.bets && data.bets.length > 0 ? data.bets[data.bets.length - 1] : [];
+    
+    if (currentStageBets.length > 0) {
+        let bettorOrder = currentStageBets.map(b => b.player);
+        sortedPlayers.sort((a, b) => {
+            let indexA = bettorOrder.indexOf(a.username);
+            let indexB = bettorOrder.indexOf(b.username);
+            // Players who haven't bet yet go to the end
+            if (indexA === -1 && indexB === -1) return 0;
+            if (indexA === -1) return 1;
+            if (indexB === -1) return -1;
+            return indexA - indexB;
+        });
+    }
+
+    $('#opponentCards').html(sortedPlayers.map(p => {
         return renderOpponent(p.username, p, data.bets);
     }).join(''));
     
@@ -269,7 +299,7 @@ socket.on('reveal', function (data) {
     $('#blindStatus').text(data.hand);
     $('#usernamesMoney').text('$' + data.money);
     
-    $('#opponentCards').html(data.cards.filter(p => p.username !== currentUser).map(p => {
+    $('#opponentCards').html(data.cards.map(p => {
         return renderOpponentCards(p.username, p, data.bets);
     }).join(''));
 });
@@ -299,6 +329,32 @@ function playNext() { socket.emit('startNextRound', {}); }
 function fold() { socket.emit('moveMade', { move: 'fold', bet: 'Fold' }); }
 function call() { socket.emit('moveMade', { move: 'call', bet: 'Call' }); }
 function check() { socket.emit('moveMade', { move: 'check', bet: 'Check' }); }
+
+function allIn() {
+    let money = parseInt($('#usernamesMoney').text().replace('$', ''));
+    if (money <= 0) return;
+    
+    // Determine if it's a bet or raise based on the current UI state
+    // If Bet button is visible, it's an initial bet
+    if ($('#usernameBet').is(':visible')) {
+        socket.emit('moveMade', { move: 'bet', bet: money });
+    } else {
+        // Otherwise it's a raise to our total stack
+        let myBetInStage = 0; // We'd need the actual bet in stage to calculate raise-to amount correctly
+        // The server raise logic expects 'bet' to be the TOTAL amount in stage
+        // We'll trust the server to handle the total amount
+        socket.emit('moveMade', { move: 'raise', bet: money + (window.currentMyBetInStage || 0) });
+    }
+}
+
+function exitGame() {
+    if (confirm("Are you sure you want to exit? You will fold and leave the table.")) {
+        socket.emit('playerExit', {});
+        setTimeout(function() {
+            window.location.reload();
+        }, 500);
+    }
+}
 
 var maxBetPossible = 0;
 var minRaisePossible = 0;
@@ -346,11 +402,17 @@ function renderOpponent(name, p, bets) {
         if (found) currentBet = found.bet;
     }
     
-    let color = (p.status === 'Their Turn') ? 'yellow' : (p.status === 'Fold' ? 'secondary' : '');
+    let isFolded = (p.status === 'Fold');
+    let color = (p.status === 'Their Turn') ? 'yellow' : (isFolded ? 'secondary' : (p.away ? 'secondary' : ''));
+    let awayLabel = p.away ? ' <div class="ui mini gray label">AWAY</div>' : '';
+    let dealerLabel = p.blind === 'Dealer' ? ' <div class="ui mini black label">D</div>' : '';
+    let allInLabel = p.allIn ? ' <div class="ui mini red label">ALL-IN</div>' : '';
+    let cardClass = isFolded ? 'blankCard foldedCard' : 'blankCard';
+    
     return '<div class="ui card ' + color + '">' +
-           '<div class="content"><div class="header">' + name + (p.status === 'Fold' ? ' (Fold)' : '') + '</div>' +
+           '<div class="content"><div class="header">' + name + (isFolded ? ' (Fold)' : '') + awayLabel + dealerLabel + allInLabel + '</div>' +
            '<div class="meta">' + (p.blind || '') + ' ' + (p.status || '') + '</div>' +
-           '<div class="description"><div class="blankCard"></div><div class="blankCard"></div></div></div>' +
+           '<div class="description"><div class="' + cardClass + '"></div><div class="' + cardClass + '"></div></div></div>' +
            '<div class="extra content">$' + p.money + (currentBet > 0 ? ' | Bet: $' + currentBet : '') + '</div></div>';
 }
 
@@ -373,7 +435,11 @@ function renderSelf(data) {
     $('#usernamesMoney').text('$' + data.money);
     $('#playerInformationCard').removeClass('yellow secondary green').css('border', '');
     
-    if (data.text == 'Their Turn') {
+    if (data.away) {
+        $('#playerInformationCard').addClass('secondary');
+        $('#status').html('<div class="ui gray label">You are AWAY</div>');
+        $('.menuButtons').hide();
+    } else if (data.text == 'Their Turn') {
         $('#playerInformationCard').addClass('yellow').css('border', '2px solid #fbbd08');
         $('#status').html('<div class="ui pointing red basic label">It\'s Your Turn!</div>');
         socket.emit('evaluatePossibleMoves', {});
@@ -421,6 +487,7 @@ socket.on('displayPossibleMoves', function (data) {
         $('#usernameCall').show().text(data.call == 'all-in' ? 'Call All-In' : 'Call $' + data.call);
     } else $('#usernameCall').hide();
     if (data.raise == 'yes') $('#usernameRaise').show(); else $('#usernameRaise').hide();
+    $('#usernameAllIn').show();
 });
 </script>
 

@@ -58,6 +58,8 @@ const Game = function (name, host) {
         this.players[i].setBlind('Big Blind');
       } else if (i === this.roundData.smallBlind) {
         this.players[i].setBlind('Small Blind');
+      } else if (i === this.roundData.dealer) {
+        this.players[i].setBlind('Dealer');
       } else {
         this.players[i].setBlind('');
       }
@@ -65,14 +67,26 @@ const Game = function (name, host) {
     }
 
     const goFirstIndex =
-      this.roundData.bigBlind - 1 < 0
-        ? this.players.length - 1
-        : this.roundData.bigBlind - 1;
+      this.roundData.bigBlind + 1 < this.players.length
+        ? this.roundData.bigBlind + 1
+        : 0;
     this.roundData.turn = this.players[goFirstIndex].getUsername();
     this.players[goFirstIndex].setStatus('Their Turn');
   };
 
   this.startNewRound = () => {
+    // Clean up players pending exit from previous round
+    const exitPlayers = this.players.filter(p => p.pendingExit);
+    for (const p of exitPlayers) {
+      this.broadcastLog(`${p.getUsername()} has left the game.`);
+    }
+    this.players = this.players.filter(p => !p.pendingExit);
+    
+    if (this.players.length === 0) {
+      this.roundInProgress = false;
+      return;
+    }
+
     this.lastMoveParsed = { move: '', player: '' };
     this.roundInProgress = true;
     this.foldPot = 0;
@@ -152,14 +166,16 @@ const Game = function (name, host) {
 
   this.rerender = () => {
     let playersData = [];
-    for (let pn = 0; pn < this.getNumPlayers(); pn++) {
+    for (let i = 0; i < this.getNumPlayers(); i++) {
       playersData.push({
-        username: this.players[pn].getUsername(),
-        status: this.players[pn].getStatus(),
-        blind: this.players[pn].getBlind(),
-        money: this.players[pn].getMoney(),
-        buyIns: this.players[pn].buyIns,
-        isChecked: this.playerIsChecked(this.players[pn]),
+        username: this.players[i].getUsername(),
+        status: this.players[i].getStatus(),
+        blind: this.players[i].getBlind(),
+        money: this.players[i].getMoney(),
+        buyIns: this.players[i].buyIns,
+        isChecked: this.playerIsChecked(this.players[i]),
+        away: this.players[i].away,
+        allIn: this.players[i].allIn,
       });
     }
     for (let pn = 0; pn < this.getNumPlayers(); pn++) {
@@ -178,6 +194,7 @@ const Game = function (name, host) {
         myBlind: this.players[pn].getBlind(),
         roundInProgress: this.roundInProgress,
         buyIns: this.players[pn].buyIns,
+        away: this.players[pn].away,
       });
     }
   };
@@ -264,7 +281,7 @@ const Game = function (name, host) {
     ) {
       let index = this.roundData.smallBlind;
       do {
-        index = index - 1 < 0 ? this.players.length - 1 : index - 1;
+        index = index + 1 >= this.players.length ? 0 : index + 1;
       } while (
         this.players[index].getStatus() == 'Fold' ||
         this.players[index].allIn
@@ -385,7 +402,7 @@ const Game = function (name, host) {
         }
         let count = 0;
         do {
-          currTurnIndex = currTurnIndex - 1 < 0 ? this.players.length - 1 : currTurnIndex - 1;
+          currTurnIndex = currTurnIndex + 1 >= this.players.length ? 0 : currTurnIndex + 1;
           count ++;
         } while (
           (this.players[currTurnIndex].getStatus() == 'Fold'
@@ -393,6 +410,14 @@ const Game = function (name, host) {
           && count < Object.keys(this.players).length * 2 // Avoid infinite loop, allow search twice on all players
         );
         this.players[currTurnIndex].setStatus('Their Turn');
+
+        // Auto-fold for away players
+        if (this.players[currTurnIndex].away) {
+          this.log(`Player ${this.players[currTurnIndex].getUsername()} is away, auto-folding...`);
+          setTimeout(() => {
+            this.fold({ id: this.players[currTurnIndex].socket.id });
+          }, 500);
+        }
       }
     }
     if (!handOver) {
@@ -516,6 +541,11 @@ const Game = function (name, host) {
         // Multiplier: 10
         const MULTIPLIER = 10;
 
+        const calc = await RatingCalculation.create({
+          poker_name: `poker game: Showdown`
+        });
+        await calc.save();
+
         for (const p of playerInvestments) {
           const user = await User.fromName(p.player.getUsername());
           if (!user) continue;
@@ -524,17 +554,11 @@ const Game = function (name, host) {
           user.rating = (user.rating || 0) + change;
           await user.save();
 
-          // Create Rating Record
-          const calc = await RatingCalculation.create({
-            poker_name: `poker game: ${p.player.getStatus() || 'Showdown'}`
-          });
-          await calc.save();
-
           const history = await RatingHistory.create({
             rating_calculation_id: calc.id,
             user_id: user.id,
             rating_after: user.rating,
-            rank: p.winner ? 1 : 2 // Simplified rank
+            rank: p.winner ? 1 : 2
           });
           await history.save();
         }
@@ -631,15 +655,22 @@ const Game = function (name, host) {
         const MULTIPLIER = 10;
         const pot = this.getCurrentPot();
 
+        const calc = await RatingCalculation.create({ poker_name: `poker game: Folds` });
+        await calc.save();
+
         // Winner (Non-folder)
         const winnerUser = await User.fromName(nonFolderPlayer.getUsername());
+        const totalInvestedByOthers = this.players
+          .filter(p => p !== nonFolderPlayer)
+          .reduce((sum, p) => sum + this.getTotalInvested(p), 0);
+        
+        const winnerGain = Math.round(totalInvestedByOthers * MULTIPLIER);
+
         this.broadcastLog(`<b>${nonFolderPlayer.getUsername()} wins the pot of $${pot} (All others folded).</b>`);
         if (winnerUser) {
-          winnerUser.rating = (winnerUser.rating || 0) + Math.round(pot * MULTIPLIER);
+          winnerUser.rating = (winnerUser.rating || 0) + winnerGain;
           await winnerUser.save();
 
-          const calc = await RatingCalculation.create({ poker_name: `poker game: Winner (Folds)` });
-          await calc.save();
           const history = await RatingHistory.create({
             rating_calculation_id: calc.id,
             user_id: winnerUser.id,
@@ -656,11 +687,10 @@ const Game = function (name, host) {
             if (invested > 0) {
               const loserUser = await User.fromName(p.getUsername());
               if (loserUser) {
-                loserUser.rating = (loserUser.rating || 0) - Math.round(invested * MULTIPLIER);
+                const loserLoss = Math.round(invested * MULTIPLIER);
+                loserUser.rating = (loserUser.rating || 0) - loserLoss;
                 await loserUser.save();
 
-                const calc = await RatingCalculation.create({ poker_name: `poker game: Fold` });
-                await calc.save();
                 const history = await RatingHistory.create({
                   rating_calculation_id: calc.id,
                   user_id: loserUser.id,
@@ -860,18 +890,9 @@ const Game = function (name, host) {
     if (player.getStatus() == 'Their Turn') {
       this.moveOntoNextPlayer();
     }
-    this.players = this.players.filter((a) => a !== player);
-    if (player.getUsername() == this.host) {
-      if (this.players.length > 0) {
-        this.host = this.players[0].getUsername();
-      }
-    }
+    player.away = true;
+    this.broadcastLog(`${player.getUsername()} is now away.`);
     this.emitPlayers('playerDisconnected', { player: player.getUsername() });
-    this.emitPlayers('joinRoomUpdate', {
-      players: this.getPlayersArray(),
-      code: this.getCode(),
-    });
-    this.emitPlayers('hostRoomUpdate', { players: this.getPlayersArray() });
     this.rerender();
   };
 

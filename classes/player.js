@@ -10,6 +10,8 @@ const Player = function (playerName, socket, debug) {
   this.dealer = false;
   this.allIn = false;
   this.goAgainStatus = false;
+  this.away = false;
+  this.pendingExit = false;
   this.debug = debug || false;
 
   this.addCard = (card) => {

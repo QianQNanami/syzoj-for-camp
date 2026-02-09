@@ -32,18 +32,31 @@ function initializePoker(io) {
 
         socket.on('join', (data) => {
             const game = rooms.find((r) => r.getCode() === data.code);
-            if (!game || game.getPlayersArray().includes(data.username) || !data.username || data.username.length > 12) {
+            if (!game || !data.username || data.username.length > 12) {
                 socket.emit('joinRoom', undefined);
             } else {
-                game.addPlayer(data.username, socket);
-                game.emitPlayers('joinRoom', {
-                    host: game.getHostName(),
-                    players: game.getPlayersArray(),
-                });
-                game.emitPlayers('hostRoom', {
-                    code: data.code,
-                    players: game.getPlayersArray(),
-                });
+                const existingPlayer = game.players.find(p => p.getUsername() === data.username);
+                if (existingPlayer) {
+                    if (existingPlayer.away) {
+                        existingPlayer.away = false;
+                        existingPlayer.socket = socket;
+                        game.broadcastLog(`${data.username} has returned!`);
+                        socket.emit('gameBegin', { code: data.code });
+                        game.rerender();
+                    } else {
+                        socket.emit('joinRoom', undefined); 
+                    }
+                } else {
+                    game.addPlayer(data.username, socket);
+                    game.emitPlayers('joinRoom', {
+                        host: game.getHostName(),
+                        players: game.getPlayersArray(),
+                    });
+                    game.emitPlayers('hostRoom', {
+                        code: data.code,
+                        players: game.getPlayersArray(),
+                    });
+                }
             }
         });
 
@@ -90,6 +103,28 @@ function initializePoker(io) {
                 else if (data.move == 'bet') game.bet(socket, data.bet);
                 else if (data.move == 'call') game.call(socket);
                 else if (data.move == 'raise') game.raise(socket, data.bet);
+            }
+        });
+
+        socket.on('playerExit', () => {
+            const game = rooms.find(r => r.findPlayer(socket.id).socket.id === socket.id);
+            if (game) {
+                const player = game.findPlayer(socket.id);
+                if (game.roundInProgress) {
+                    player.away = true;
+                    player.pendingExit = true;
+                    game.broadcastLog(`${player.getUsername()} will leave after this round.`);
+                    if (player.getStatus() === 'Their Turn') {
+                        game.fold(socket);
+                    } else {
+                        game.rerender();
+                    }
+                } else {
+                    game.players = game.players.filter(p => p !== player);
+                    if (game.players.length === 0) {
+                        rooms = rooms.filter(r => r !== game);
+                    }
+                }
             }
         });
 
