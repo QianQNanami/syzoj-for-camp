@@ -2,7 +2,9 @@
 <% include header %>
 
 <%
-if (!(err instanceof ErrorMessage)) {
+if (typeof err === 'undefined' || err === null) {
+  err = new ErrorMessage('未知错误');
+} else if (!(err instanceof ErrorMessage)) {
   err = new ErrorMessage(err.toString());
 }
 %>

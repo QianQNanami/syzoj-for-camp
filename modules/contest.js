@@ -210,23 +210,23 @@ app.get('/contest/:id/export_all', async (req, res) => {
       sevenZipPath = '7za'; // Fallback to PATH
     }
 
-    const zipArgs = [zipFile.path, rootPath];
-    await p7zip.add(zipArgs[0], zipArgs[1], { 
-      recursive: true,
-      $bin: sevenZipPath
-    }).catch(async (err) => {
-        // Fix for node-7z 0.4.0: it might fail if $bin is not recognized or on error
-        // If it fails with ENOENT for 7z, try to use unzip or zip if available, but here we prefer fixing the command
-        if (err && err.code === 'ENOENT') {
-            const exec = require('child_process').exec;
-            const util = require('util');
-            const execAsync = util.promisify(exec);
-            // Fallback to zip command if 7z is missing
-            await execAsync(`zip -r "${zipFile.path}" .`, { cwd: rootPath });
-        } else {
-            throw err;
-        }
-    });
+    try {
+      const exec = require('child_process').exec;
+      const util = require('util');
+      const execAsync = util.promisify(exec);
+      
+      const fs = require('fs-extra');
+      if (await fs.exists(zipFile.path)) {
+        await fs.remove(zipFile.path);
+      }
+
+      let cmd = `zip -r "${zipFile.path}" .`;
+      syzoj.log(`Executing: ${cmd} in ${rootPath}`);
+      await execAsync(cmd, { cwd: rootPath });
+    } catch (err) {
+      syzoj.log(`Zip failed: ${err.message}`);
+      throw err;
+    }
 
     res.download(zipFile.path, `${rootDirName}.zip`, async (err) => {
       await dir.cleanup();
@@ -235,7 +235,7 @@ app.get('/contest/:id/export_all', async (req, res) => {
   } catch (e) {
     syzoj.log(e);
     res.render('error', {
-      err: e
+      err: e || new Error('Unknown error')
     });
   }
 });
