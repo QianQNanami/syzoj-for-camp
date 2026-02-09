@@ -176,17 +176,20 @@ app.get('/contest/:id/export_all', async (req, res) => {
     let p7zip = new (require('node-7z'));
 
     let dir = await tmp.dir({ unsafeCleanup: true });
-    let rootPath = path.join(dir.path, contest.title.replace(/[\\/:*?"<>|]/g, '_'));
+    let rootDirName = (contest.title || `contest_${contest.id}`).replace(/[\\/:*?"<>|]/g, '_');
+    let rootPath = path.join(dir.path, rootDirName);
     await fs.ensureDir(rootPath);
 
     for (let i = 0; i < problems.length; i++) {
       let problem = problems[i];
-      let problemDirName = `${i + 1} - ${problem.title.replace(/[\\/:*?"<>|]/g, '_')}`;
+      if (!problem) continue;
+      let problemTitle = (problem.title || `problem_${i + 1}`).replace(/[\\/:*?"<>|]/g, '_');
+      let problemDirName = `${i + 1} - ${problemTitle}`;
       let problemPath = path.join(rootPath, problemDirName);
       await fs.ensureDir(problemPath);
 
       // Statement
-      let statement = `# ${problem.title}\n\n`;
+      let statement = `# ${problem.title || ''}\n\n`;
       if (problem.description) statement += `## 题目描述\n\n${problem.description}\n\n`;
       if (problem.input_format) statement += `## 输入格式\n\n${problem.input_format}\n\n`;
       if (problem.output_format) statement += `## 输出格式\n\n${problem.output_format}\n\n`;
@@ -202,9 +205,30 @@ app.get('/contest/:id/export_all', async (req, res) => {
     }
 
     let zipFile = await tmp.file({ postfix: '.zip' });
-    await p7zip.add(zipFile.path, rootPath, { recursive: true });
+    let sevenZipPath = syzoj.utils.resolvePath('bin', '7za');
+    if (!await fs.exists(sevenZipPath)) {
+      sevenZipPath = '7za'; // Fallback to PATH
+    }
 
-    res.download(zipFile.path, `${contest.title}.zip`, async (err) => {
+    const zipArgs = [zipFile.path, rootPath];
+    await p7zip.add(zipArgs[0], zipArgs[1], { 
+      recursive: true,
+      $bin: sevenZipPath
+    }).catch(async (err) => {
+        // Fix for node-7z 0.4.0: it might fail if $bin is not recognized or on error
+        // If it fails with ENOENT for 7z, try to use unzip or zip if available, but here we prefer fixing the command
+        if (err && err.code === 'ENOENT') {
+            const exec = require('child_process').exec;
+            const util = require('util');
+            const execAsync = util.promisify(exec);
+            // Fallback to zip command if 7z is missing
+            await execAsync(`zip -r "${zipFile.path}" .`, { cwd: rootPath });
+        } else {
+            throw err;
+        }
+    });
+
+    res.download(zipFile.path, `${rootDirName}.zip`, async (err) => {
       await dir.cleanup();
       await zipFile.cleanup();
     });
