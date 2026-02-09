@@ -157,6 +157,89 @@ app.post('/contest/:id/edit', async (req, res) => {
   }
 });
 
+app.get('/contest/:id/export_all', async (req, res) => {
+  try {
+    if (!res.locals.user || (!res.locals.user.is_admin && res.locals.user.user_type !== 'admin')) {
+      throw new ErrorMessage('您没有权限进行此操作。');
+    }
+
+    let contest_id = parseInt(req.params.id);
+    let contest = await Contest.findById(contest_id);
+    if (!contest) throw new ErrorMessage('无此比赛。');
+
+    let problems_id = await contest.getProblems();
+    let problems = await problems_id.mapAsync(async id => await Problem.findById(id));
+
+    let tmp = require('tmp-promise');
+    let fs = require('fs-extra');
+    let path = require('path');
+    let p7zip = new (require('node-7z'));
+
+    let dir = await tmp.dir({ unsafeCleanup: true });
+    let rootDirName = (contest.title || `contest_${contest.id}`).replace(/[\\/:*?"<>|]/g, '_');
+    let rootPath = path.join(dir.path, rootDirName);
+    await fs.ensureDir(rootPath);
+
+    for (let i = 0; i < problems.length; i++) {
+      let problem = problems[i];
+      if (!problem) continue;
+      let problemTitle = (problem.title || `problem_${i + 1}`).replace(/[\\/:*?"<>|]/g, '_');
+      let problemDirName = `${i + 1} - ${problemTitle}`;
+      let problemPath = path.join(rootPath, problemDirName);
+      await fs.ensureDir(problemPath);
+
+      // Statement
+      let statement = `# ${problem.title || ''}\n\n`;
+      if (problem.description) statement += `## 题目描述\n\n${problem.description}\n\n`;
+      if (problem.input_format) statement += `## 输入格式\n\n${problem.input_format}\n\n`;
+      if (problem.output_format) statement += `## 输出格式\n\n${problem.output_format}\n\n`;
+      if (problem.example) statement += `## 样例\n\n${problem.example}\n\n`;
+      if (problem.limit_and_hint) statement += `## 数据范围与提示\n\n${problem.limit_and_hint}\n\n`;
+      await fs.writeFile(path.join(problemPath, 'statement.md'), statement);
+
+      // Testdata
+      let testdataPath = problem.getTestdataPath();
+      if (await fs.exists(testdataPath)) {
+        await fs.copy(testdataPath, path.join(problemPath, 'testdata'));
+      }
+    }
+
+    let zipFile = await tmp.file({ postfix: '.zip' });
+    let sevenZipPath = syzoj.utils.resolvePath('bin', '7za');
+    if (!await fs.exists(sevenZipPath)) {
+      sevenZipPath = '7za'; // Fallback to PATH
+    }
+
+    const zipArgs = [zipFile.path, rootPath];
+    await p7zip.add(zipArgs[0], zipArgs[1], { 
+      recursive: true,
+      $bin: sevenZipPath
+    }).catch(async (err) => {
+        // Fix for node-7z 0.4.0: it might fail if $bin is not recognized or on error
+        // If it fails with ENOENT for 7z, try to use unzip or zip if available, but here we prefer fixing the command
+        if (err && err.code === 'ENOENT') {
+            const exec = require('child_process').exec;
+            const util = require('util');
+            const execAsync = util.promisify(exec);
+            // Fallback to zip command if 7z is missing
+            await execAsync(`zip -r "${zipFile.path}" .`, { cwd: rootPath });
+        } else {
+            throw err;
+        }
+    });
+
+    res.download(zipFile.path, `${rootDirName}.zip`, async (err) => {
+      await dir.cleanup();
+      await zipFile.cleanup();
+    });
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
 app.get('/contest/:id', async (req, res) => {
   try {
     const curUser = res.locals.user;
