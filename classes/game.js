@@ -40,12 +40,15 @@ const Game = function (name, host) {
   };
 
   this.assignBlind = () => {
+    const activePlayers = this.players.filter(p => !p.waiting);
+    if (activePlayers.length === 0) return;
+
     this.roundData.smallBlind =
-      this.roundData.dealer + 1 < this.players.length
+      this.roundData.dealer + 1 < activePlayers.length
         ? this.roundData.dealer + 1
         : 0;
     this.roundData.bigBlind =
-      this.roundData.smallBlind + 1 < this.players.length
+      this.roundData.smallBlind + 1 < activePlayers.length
         ? this.roundData.smallBlind + 1
         : 0;
 
@@ -53,25 +56,28 @@ const Game = function (name, host) {
     this.log('bigBlind: ' + this.roundData.bigBlind);
 
     for (let i = 0; i < this.players.length; i++) {
-      this.players[i].setDealer(i === this.roundData.dealer);
-      if (i === this.roundData.bigBlind) {
-        this.players[i].setBlind('Big Blind');
-      } else if (i === this.roundData.smallBlind) {
-        this.players[i].setBlind('Small Blind');
-      } else if (i === this.roundData.dealer) {
-        this.players[i].setBlind('Dealer');
-      } else {
-        this.players[i].setBlind('');
-      }
+      this.players[i].setDealer(false);
+      this.players[i].setBlind('');
       this.players[i].setStatus('');
     }
 
+    for (let i = 0; i < activePlayers.length; i++) {
+      activePlayers[i].setDealer(i === this.roundData.dealer);
+      if (i === this.roundData.bigBlind) {
+        activePlayers[i].setBlind('Big Blind');
+      } else if (i === this.roundData.smallBlind) {
+        activePlayers[i].setBlind('Small Blind');
+      } else if (i === this.roundData.dealer) {
+        activePlayers[i].setBlind('Dealer');
+      }
+    }
+
     const goFirstIndex =
-      this.roundData.bigBlind + 1 < this.players.length
+      this.roundData.bigBlind + 1 < activePlayers.length
         ? this.roundData.bigBlind + 1
         : 0;
-    this.roundData.turn = this.players[goFirstIndex].getUsername();
-    this.players[goFirstIndex].setStatus('Their Turn');
+    this.roundData.turn = activePlayers[goFirstIndex].getUsername();
+    activePlayers[goFirstIndex].setStatus('Their Turn');
   };
 
   this.startNewRound = () => {
@@ -82,6 +88,14 @@ const Game = function (name, host) {
     }
     this.players = this.players.filter(p => !p.pendingExit);
     
+    // Transition all waiting players to active
+    for (const p of this.players) {
+      if (p.waiting) {
+        p.waiting = false;
+        this.broadcastLog(`${p.getUsername()} is now joining the game.`);
+      }
+    }
+
     if (this.players.length === 0) {
       this.roundInProgress = false;
       return;
@@ -101,11 +115,12 @@ const Game = function (name, host) {
     }
 
     // Init dealer
+    const activePlayers = this.players.filter(p => !p.waiting);
     if (this.roundNum == 0) {
       this.roundData.dealer = 0;
     } else {
       this.roundData.dealer =
-        this.roundData.dealer + 1 < this.players.length
+        this.roundData.dealer + 1 < activePlayers.length
           ? this.roundData.dealer + 1
           : 0;
     }
@@ -113,7 +128,7 @@ const Game = function (name, host) {
     this.assignBlind();
 
     if (this.autoBuyIns) {
-      for (player of this.players) {
+      for (player of activePlayers) {
         if (player.getMoney() == 0) {
           player.money = 100;
           player.buyIns = player.buyIns + 1;
@@ -122,39 +137,41 @@ const Game = function (name, host) {
     }
 
     // handle big and small blind initial forced bets
+    const bbPlayer = activePlayers[this.roundData.bigBlind];
+    const sbPlayer = activePlayers[this.roundData.smallBlind];
 
-    if (this.players[this.roundData.bigBlind].money < this.bigBlind) {
-      this.players[this.roundData.bigBlind].money = 0;
-      this.players[this.roundData.bigBlind].allIn = true;
+    if (bbPlayer.money < this.bigBlind) {
+      bbPlayer.money = 0;
+      bbPlayer.allIn = true;
       this.roundData.bets.push([
         {
-          player: this.players[this.roundData.bigBlind].getUsername(),
-          bet: this.bigBlind - this.players[this.roundData.bigBlind].money,
+          player: bbPlayer.getUsername(),
+          bet: this.bigBlind - bbPlayer.money,
         },
       ]);
     } else {
-      this.players[this.roundData.bigBlind].money =
-        this.players[this.roundData.bigBlind].money - this.bigBlind;
+      bbPlayer.money =
+        bbPlayer.money - this.bigBlind;
       this.roundData.bets.push([
         {
-          player: this.players[this.roundData.bigBlind].getUsername(),
+          player: bbPlayer.getUsername(),
           bet: this.bigBlind,
         },
       ]);
     }
 
-    if (this.players[this.roundData.smallBlind].money == this.smallBlind) {
-      this.players[this.roundData.smallBlind].money = 0;
+    if (sbPlayer.money == this.smallBlind) {
+      sbPlayer.money = 0;
       this.roundData.bets[0].push({
-        player: this.players[this.roundData.smallBlind].getUsername(),
-        bet: this.smallBlind - this.players[this.roundData.bigBlind].money,
+        player: sbPlayer.getUsername(),
+        bet: this.smallBlind - bbPlayer.money,
       });
-      this.players[this.roundData.smallBlind].allIn = true;
+      sbPlayer.allIn = true;
     } else {
-      this.players[this.roundData.smallBlind].money =
-        this.players[this.roundData.smallBlind].money - this.smallBlind;
+      sbPlayer.money =
+        sbPlayer.money - this.smallBlind;
       this.roundData.bets[0].push({
-        player: this.players[this.roundData.smallBlind].getUsername(),
+        player: sbPlayer.getUsername(),
         bet: this.smallBlind,
       });
     }
@@ -175,6 +192,7 @@ const Game = function (name, host) {
         buyIns: this.players[i].buyIns,
         isChecked: this.playerIsChecked(this.players[i]),
         away: this.players[i].away,
+        waiting: this.players[i].waiting,
         allIn: this.players[i].allIn,
       });
     }
@@ -195,6 +213,7 @@ const Game = function (name, host) {
         roundInProgress: this.roundInProgress,
         buyIns: this.players[pn].buyIns,
         away: this.players[pn].away,
+        waiting: this.players[pn].waiting,
       });
     }
   };
@@ -274,17 +293,18 @@ const Game = function (name, host) {
   };
 
   this.findFirstToGoPlayer = () => {
+    const activePlayers = this.players.filter(p => !p.waiting);
     if (
-      !this.players[this.roundData.smallBlind] ||
-      this.players[this.roundData.smallBlind].getStatus() == 'Fold' ||
-      this.players[this.roundData.smallBlind].allIn
+      !activePlayers[this.roundData.smallBlind] ||
+      activePlayers[this.roundData.smallBlind].getStatus() == 'Fold' ||
+      activePlayers[this.roundData.smallBlind].allIn
     ) {
       let index = this.roundData.smallBlind;
       do {
-        index = index + 1 >= this.players.length ? 0 : index + 1;
+        index = index + 1 >= activePlayers.length ? 0 : index + 1;
       } while (
-        this.players[index].getStatus() == 'Fold' ||
-        this.players[index].allIn
+        activePlayers[index].getStatus() == 'Fold' ||
+        activePlayers[index].allIn
       );
       return index;
     } else {
@@ -819,6 +839,9 @@ const Game = function (name, host) {
 
   this.addPlayer = (playerName, socket) => {
     const player = new Player(playerName, socket, this.debug);
+    if (this.roundInProgress) {
+      player.waiting = true;
+    }
     this.players.push(player);
     return player;
   };
@@ -839,10 +862,13 @@ const Game = function (name, host) {
 
   this.dealCards = () => {
     this.deck.shuffle();
-    for (let pn = 0; pn < this.getNumPlayers(); pn++) {
+    const activePlayers = this.players.filter(p => !p.waiting);
+    for (let pn = 0; pn < this.players.length; pn++) {
       this.players[pn].cards = [];
+    }
+    for (let pn = 0; pn < activePlayers.length; pn++) {
       for (let i = 0; i < this.cardsPerPlayer; i++) {
-        this.players[pn].addCard(this.deck.dealRandomCard());
+        activePlayers[pn].addCard(this.deck.dealRandomCard());
       }
     }
 
@@ -850,16 +876,17 @@ const Game = function (name, host) {
   };
 
   this.refreshCards = function () {
-    for (let pn = 0; pn < this.getNumPlayers(); pn++) {
-      this.players[pn].cards.sort((a, b) => {
+    const activePlayers = this.players.filter(p => !p.waiting);
+    for (let pn = 0; pn < activePlayers.length; pn++) {
+      activePlayers[pn].cards.sort((a, b) => {
         return a.compare(b);
       });
 
-      this.players[pn].emit('dealt', {
+      activePlayers[pn].emit('dealt', {
         currBet: this.getCurrentTopBet(),
-        username: this.players[pn].getUsername(),
-        cards: this.players[pn].cards,
-        players: this.players.map((p) => {
+        username: activePlayers[pn].getUsername(),
+        cards: activePlayers[pn].cards,
+        players: activePlayers.map((p) => {
           return p.username;
         }),
       });
