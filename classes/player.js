@@ -11,6 +11,7 @@ const Player = function (playerName, socket, debug) {
   this.allIn = false;
   this.goAgainStatus = false;
   this.away = false;
+  this.waiting = false;
   this.pendingExit = false;
   this.debug = debug || false;
 
