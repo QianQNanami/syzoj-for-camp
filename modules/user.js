@@ -241,7 +241,14 @@ app.post('/user/:id/edit', async (req, res) => {
       await user.setGroup(req.body.groups.map(id => parseInt(id)));
     }
 
-    user.information = req.body.information;
+    if (req.body.information !== user.information) {
+      if (res.locals.user && !res.locals.user.is_admin && !await res.locals.user.hasPrivilege('manage_user')) {
+        if (res.locals.user.user_type === 'student' || res.locals.user.user_type === 'teacher') {
+          throw new ErrorMessage('学生或教师用户不能修改个人信息。');
+        }
+      }
+      user.information = req.body.information;
+    }
     user.sex = req.body.sex;
     user.public_email = (req.body.public_email === 'on');
     user.prefer_formatted_code = (req.body.prefer_formatted_code === 'on');
