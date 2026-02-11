@@ -67,8 +67,18 @@
                 </div>
                 <div class="extra content" id="selfMoneyArea">
                     <div id="usernamesMoney" style="font-size: 1.5em; font-weight: bold;"></div>
+                    <div id="selfSpirituality" style="color: #6435c9; font-weight: bold;">Spirituality: 0</div>
                     <div id="blindStatus"></div>
                     <div id="status"></div>
+                </div>
+            </div>
+            
+            <div class="ui segment" id="skillArea" style="display: none;">
+                <h4 class="ui dividing header">Skill</h4>
+                <div id="skillName" style="font-weight: bold; margin-bottom: 5px;"></div>
+                <div class="ui buttons fluid">
+                    <button id="useSkillBtn" onclick="useSkill()" class="ui violet button">Use Skill</button>
+                    <button id="skillInfoBtn" onclick="showSkillInfo()" class="ui button icon"><i class="info circle icon"></i></button>
                 </div>
             </div>
             
@@ -182,6 +192,24 @@
     </div>
 </div>
 
+<div class="ui modal" id="skillTargetModal">
+    <div class="header">Select Target</div>
+    <div class="content">
+        <div id="skillTargetList" class="ui selection list"></div>
+    </div>
+    <div class="actions">
+        <div class="ui cancel button">Cancel</div>
+    </div>
+</div>
+
+<div class="ui modal" id="skillInfoModal">
+    <div class="header">Skill Information</div>
+    <div class="content" id="skillInfoContent"></div>
+    <div class="actions">
+        <div class="ui cancel button">Close</div>
+    </div>
+</div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 var socket = io('/poker_socket');
@@ -247,9 +275,14 @@ socket.on('dealt', function (data) {
 });
 
 socket.on('rerender', function (data) {
+    window.currentPlayers = data.players;
     window.currentMyBetInStage = data.myBet;
+    window.isSmokeActive = data.topBet === '???';
     if (data.myBet == 0) $('#usernamesCards').text(data.username + ' - My Cards');
-    else $('#usernamesCards').text(data.username + ' - My Bet: $' + data.myBet);
+    else {
+        let betText = window.isSmokeActive ? '???' : data.myBet;
+        $('#usernamesCards').text(data.username + ' - My Bet: $' + betText);
+    }
     
     if (data.community != undefined) $('#communityCards').html(data.community.map(renderCard).join(''));
     else $('#communityCards').empty();
@@ -284,7 +317,12 @@ socket.on('rerender', function (data) {
         text: data.myStatus,
         blind: data.myBlind,
         bets: data.bets,
-        buyIns: data.buyIns
+        buyIns: data.buyIns,
+        spirituality: data.mySpirituality,
+        skill: data.mySkill,
+        skillUsed: data.skillUsed,
+        away: data.away,
+        waiting: data.waiting
     });
     
     if (!data.roundInProgress) {
@@ -330,6 +368,51 @@ function fold() { socket.emit('moveMade', { move: 'fold', bet: 'Fold' }); }
 function call() { socket.emit('moveMade', { move: 'call', bet: 'Call' }); }
 function check() { socket.emit('moveMade', { move: 'check', bet: 'Check' }); }
 
+const SKILL_DESCRIPTIONS = {
+    'reveal': '<b>真理明牌 (Reveal Hand)</b><br>瞬间触发。向全场公开自己的两张底牌。用于心理压迫或建立信任。',
+    'swap': '<b>虚空换牌 (Swap Card)</b><br>操作干预。从底牌中选一张由系统随机替换。换牌过程公开，结果私密。',
+    'silence': '<b>灵魂沉默 (Silence)</b><br>规则锁定。使一名目标对手在下一轮行动中无法执行“加注(Raise)”。',
+    'smoke': '<b>深渊烟雾弹 (Smoke Screen)</b><br>信息遮蔽。加注时触发，隐藏自己的下注和余额。本阶段后续跟注者的信息也将被遮蔽。',
+    'fate': '<b>命运交换 (Exchange Fate)</b><br>因果重组。物理交换自己与一名目标对手的所有底牌。'
+};
+
+function showSkillInfo() {
+    if (!window.currentSkill) return;
+    let desc = SKILL_DESCRIPTIONS[window.currentSkill.id] || '暂无说明';
+    $('#skillInfoContent').html(desc);
+    $('#skillInfoModal').modal('show');
+}
+
+function useSkill() {
+    if (!window.currentSkill) return;
+    if (window.currentSkill.id === 'silence' || window.currentSkill.id === 'fate') {
+        let targets = window.currentPlayers.filter(p => p.username !== currentUser && !p.waiting);
+        if (targets.length === 0) return alert('No valid targets.');
+        $('#skillTargetList').html(targets.map(p => 
+            '<div class="item" onclick="confirmSkillTarget(\'' + p.username + '\')">' + p.username + '</div>'
+        ).join(''));
+        $('#skillTargetModal').modal('show');
+    } else if (window.currentSkill.id === 'swap') {
+        // Swap Card: User chooses which card to replace
+        $('#skillTargetList').html([0, 1].map(idx => 
+            '<div class="item" onclick="confirmSkillTarget(' + idx + ')">Card ' + (idx + 1) + '</div>'
+        ).join(''));
+        $('#skillTargetModal').modal('show');
+    } else {
+        if (confirm('Use ' + window.currentSkill.name + '?')) {
+            socket.emit('useSkill', { target: null });
+        }
+    }
+}
+
+function confirmSkillTarget(target) {
+    let targetDisplay = (typeof target === 'number') ? ('Card ' + (target + 1)) : target;
+    if (confirm('Use ' + window.currentSkill.name + (target !== null ? ' on ' + targetDisplay : '') + '?')) {
+        socket.emit('useSkill', { target: target });
+        $('#skillTargetModal').modal('hide');
+    }
+}
+
 function allIn() {
     let money = parseInt($('#usernamesMoney').text().replace('$', ''));
     if (money <= 0) return;
@@ -371,7 +454,10 @@ function validateRaiseInput() {
     let val = parseInt($('#raiseAmountInput').val());
     let isValid = !isNaN(val) && val >= minRaisePossible && val <= maxRaisePossible;
     $('#confirmRaiseBtn').toggleClass('disabled', !isValid);
-    $('#raiseDisplay').html('<h3 class="ui center aligned header">Raise top bet to $' + (isNaN(val) ? 0 : val) + '</h3>');
+    
+    let displayVal = isNaN(val) ? 0 : val;
+    let displayText = window.isSmokeActive ? ('Raise by $' + displayVal) : ('Raise top bet to $' + displayVal);
+    $('#raiseDisplay').html('<h3 class="ui center aligned header">' + displayText + '</h3>');
 }
 
 function bet() {
@@ -405,15 +491,27 @@ function renderOpponent(name, p, bets) {
     let isFolded = (p.status === 'Fold');
     let color = (p.status === 'Their Turn') ? 'yellow' : (isFolded ? 'secondary' : (p.away ? 'secondary' : ''));
     let awayLabel = p.away ? ' <div class="ui mini gray label">AWAY</div>' : '';
+    let waitingLabel = p.waiting ? ' <div class="ui mini blue label">WAITING</div>' : '';
     let dealerLabel = p.blind === 'Dealer' ? ' <div class="ui mini black label">D</div>' : '';
     let allInLabel = p.allIn ? ' <div class="ui mini red label">ALL-IN</div>' : '';
-    let cardClass = isFolded ? 'blankCard foldedCard' : 'blankCard';
+    let silenceLabel = p.isSilenced ? ' <div class="ui mini yellow label">SILENCED</div>' : '';
+    let revealedLabel = p.revealed ? ' <div class="ui mini teal label">REVEALED</div>' : '';
+    let skillUsedLabel = p.skillUsed ? ' <div class="ui mini violet label">SKILL USED</div>' : '';
+    
+    let cardContent = '';
+    if (isFolded || p.waiting) {
+        cardContent = '<div class="blankCard foldedCard"></div><div class="blankCard foldedCard"></div>';
+    } else if (p.revealed && p.cards) {
+        cardContent = p.cards.map(renderCard).join('');
+    } else {
+        cardContent = '<div class="blankCard"></div><div class="blankCard"></div>';
+    }
     
     return '<div class="ui card ' + color + '">' +
-           '<div class="content"><div class="header">' + name + (isFolded ? ' (Fold)' : '') + awayLabel + dealerLabel + allInLabel + '</div>' +
-           '<div class="meta">' + (p.blind || '') + ' ' + (p.status || '') + '</div>' +
-           '<div class="description"><div class="' + cardClass + '"></div><div class="' + cardClass + '"></div></div></div>' +
-           '<div class="extra content">$' + p.money + (currentBet > 0 ? ' | Bet: $' + currentBet : '') + '</div></div>';
+           '<div class="content"><div class="header">' + name + (isFolded ? ' (Fold)' : '') + awayLabel + waitingLabel + dealerLabel + allInLabel + silenceLabel + revealedLabel + skillUsedLabel + '</div>' +
+           '<div class="meta">' + (p.blind || '') + ' ' + (p.status || '') + ' | S: ' + p.spirituality + '</div>' +
+           '<div class="description">' + cardContent + '</div></div>' +
+           '<div class="extra content">' + (typeof p.money === 'number' ? '$' + p.money : p.money) + (currentBet > 0 ? ' | Bet: ' + (typeof currentBet === 'number' ? '$' + currentBet : currentBet) : '') + '</div></div>';
 }
 
 function renderOpponentCards(name, p, bets) {
@@ -433,11 +531,25 @@ function renderOpponentCards(name, p, bets) {
 function renderSelf(data) {
     $('#playNext').empty();
     $('#usernamesMoney').text('$' + data.money);
+    $('#selfSpirituality').text('Spirituality: ' + data.spirituality);
+    
+    if (data.skill && !data.skillUsed) {
+        $('#skillArea').show();
+        $('#skillName').text(data.skill.name + ' (Cost: ' + data.skill.cost + ')');
+        window.currentSkill = data.skill;
+    } else {
+        $('#skillArea').hide();
+    }
+
     $('#playerInformationCard').removeClass('yellow secondary green').css('border', '');
     
     if (data.away) {
         $('#playerInformationCard').addClass('secondary');
         $('#status').html('<div class="ui gray label">You are AWAY</div>');
+        $('.menuButtons').hide();
+    } else if (data.waiting) {
+        $('#playerInformationCard').addClass('secondary');
+        $('#status').html('<div class="ui blue label">Waiting for next round...</div>');
         $('.menuButtons').hide();
     } else if (data.text == 'Their Turn') {
         $('#playerInformationCard').addClass('yellow').css('border', '2px solid #fbbd08');
@@ -471,8 +583,23 @@ function updateRaiseDisplay() {
 socket.on('updateRaiseModal', function (data) {
     minRaisePossible = data.topBet;
     maxRaisePossible = data.usernameMoney;
-    $('#raiseAmountInput').val(data.topBet);
-    $('#raiseRangeHint').text('Min: $' + data.topBet + ', Max: $' + data.usernameMoney);
+    
+    if (window.isSmokeActive) {
+        // Delta mode
+        minRaisePossible = 1;
+        // Max we can raise is limited by our money
+        // Actually, if we're in smoke, the server handles the total.
+        // We need to tell the user they can add up to (money) more.
+        maxRaisePossible = data.usernameMoney - data.topBet; 
+        if (maxRaisePossible < 0) maxRaisePossible = 0;
+        
+        $('#raiseAmountInput').val(1);
+        $('#raiseRangeHint').text('Incremental Raise. Min: $1, Max: $' + maxRaisePossible);
+    } else {
+        $('#raiseAmountInput').val(data.topBet);
+        $('#raiseRangeHint').text('Min: $' + data.topBet + ', Max: $' + data.usernameMoney);
+    }
+    
     validateRaiseInput();
     $('#raiseModal').modal('show');
 });
@@ -484,10 +611,14 @@ socket.on('displayPossibleMoves', function (data) {
     if (data.check == 'yes') $('#usernameCheck').show(); else $('#usernameCheck').hide();
     if (data.bet == 'yes') $('#usernameBet').show(); else $('#usernameBet').hide();
     if (data.call != 'no') {
-        $('#usernameCall').show().text(data.call == 'all-in' ? 'Call All-In' : 'Call $' + data.call);
+        let callText = 'Call';
+        if (!data.isSmoke) {
+            callText = (data.call == 'all-in' ? 'Call All-In' : 'Call $' + data.call);
+        }
+        $('#usernameCall').show().text(callText);
     } else $('#usernameCall').hide();
     if (data.raise == 'yes') $('#usernameRaise').show(); else $('#usernameRaise').hide();
-    $('#usernameAllIn').show();
+    if (data.allIn == 'no') $('#usernameAllIn').hide(); else $('#usernameAllIn').show();
 });
 </script>
 

@@ -48,6 +48,10 @@ function initializePoker(io) {
                     }
                 } else {
                     game.addPlayer(data.username, socket);
+                    if (game.roundInProgress) {
+                        socket.emit('gameBegin', { code: data.code });
+                        game.broadcastLog(`${data.username} has joined and is waiting for the next round.`);
+                    }
                     game.emitPlayers('joinRoom', {
                         host: game.getHostName(),
                         players: game.getPlayersArray(),
@@ -56,6 +60,9 @@ function initializePoker(io) {
                         code: data.code,
                         players: game.getPlayersArray(),
                     });
+                    if (game.roundInProgress) {
+                        game.rerender();
+                    }
                 }
             }
         });
@@ -103,6 +110,13 @@ function initializePoker(io) {
                 else if (data.move == 'bet') game.bet(socket, data.bet);
                 else if (data.move == 'call') game.call(socket);
                 else if (data.move == 'raise') game.raise(socket, data.bet);
+            }
+        });
+
+        socket.on('useSkill', (data) => {
+            const game = rooms.find(r => r.findPlayer(socket.id).socket.id === socket.id);
+            if (game) {
+                game.useSkill(socket, data.target);
             }
         });
 
