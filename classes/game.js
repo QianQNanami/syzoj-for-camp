@@ -23,6 +23,7 @@ const Game = function (name, host) {
   this.community = [];
   this.foldPot = 0;
   this.bigBlindWent = false;
+  this.smokeScreenActive = false;
   this.lastMoveParsed = { move: '', player: '' };
   this.roundInProgress = false;
   this.disconnectedPlayers = [];
@@ -108,6 +109,13 @@ const Game = function (name, host) {
     this.community = [];
     this.roundData.turn = '';
     this.roundData.bets = [];
+    this.smokeScreenActive = false;
+    for (const p of this.players) {
+      p.skillUsed = false;
+      p.isSilenced = false;
+      p.revealed = false;
+    }
+    this.assignSkills();
     this.dealCards();
     this.log('deck len' + this.deck.cards.length);
     for (pn of this.players) {
@@ -188,28 +196,41 @@ const Game = function (name, host) {
         username: this.players[i].getUsername(),
         status: this.players[i].getStatus(),
         blind: this.players[i].getBlind(),
-        money: this.players[i].getMoney(),
+        money: this.smokeScreenActive ? '???' : this.players[i].getMoney(),
+        spirituality: this.players[i].spirituality,
         buyIns: this.players[i].buyIns,
         isChecked: this.playerIsChecked(this.players[i]),
         away: this.players[i].away,
         waiting: this.players[i].waiting,
-        allIn: this.players[i].allIn,
+        allIn: (this.smokeScreenActive && this.roundInProgress) ? false : this.players[i].allIn,
+        isSilenced: this.players[i].isSilenced,
+        revealed: this.players[i].revealed,
+        cards: this.players[i].revealed ? this.players[i].cards : null,
+        skillUsed: this.players[i].skillUsed,
       });
     }
     for (let pn = 0; pn < this.getNumPlayers(); pn++) {
+      let visibleBets = this.roundData.bets;
+      if (this.smokeScreenActive) {
+        visibleBets = this.roundData.bets.map(stage => stage.map(b => ({ ...b, bet: b.bet === 'Fold' ? 'Fold' : '???' })));
+      }
+
       this.players[pn].emit('rerender', {
         community: this.community,
-        topBet: this.getCurrentTopBet(),
-        bets: this.roundData.bets,
+        topBet: this.smokeScreenActive ? '???' : this.getCurrentTopBet(),
+        bets: visibleBets,
         username: this.players[pn].getUsername(),
         round: this.roundNum,
         stage: this.getStageName(),
-        pot: this.getCurrentPot(),
+        pot: this.smokeScreenActive ? '???' : this.getCurrentPot(),
         players: playersData,
         myMoney: this.players[pn].getMoney(),
         myBet: this.getPlayerBetInStage(this.players[pn]),
         myStatus: this.players[pn].getStatus(),
         myBlind: this.players[pn].getBlind(),
+        mySpirituality: this.players[pn].spirituality,
+        mySkill: this.players[pn].assignedSkill,
+        skillUsed: this.players[pn].skillUsed,
         roundInProgress: this.roundInProgress,
         buyIns: this.players[pn].buyIns,
         away: this.players[pn].away,
@@ -325,9 +346,15 @@ const Game = function (name, host) {
   };
 
   this.updateStage = () => {
+    const activePlayers = this.players.filter(p => !p.waiting);
+    const firstToGoIndex = this.findFirstToGoPlayer();
+    const firstToGoPlayer = activePlayers[firstToGoIndex];
+    
     for (let i = 0; i < this.players.length; i++) {
+      if (this.players[i].waiting) continue;
+
       if (
-        i === this.findFirstToGoPlayer() &&
+        this.players[i] === firstToGoPlayer &&
         this.players[i].getStatus() !== 'Fold'
       ) {
         this.players[i].setStatus('Their Turn');
@@ -336,6 +363,7 @@ const Game = function (name, host) {
       }
     }
     this.roundData.bets.push([]);
+    this.smokeScreenActive = false;
     this.broadcastLog(`<b>Stage: ${this.getStageName()}</b> (Pot: $${this.getCurrentPot()})`);
   };
 
@@ -343,6 +371,7 @@ const Game = function (name, host) {
     let handOver = false;
     if (this.isStageComplete()) {
       this.log('stage complete');
+      const activePlayers = this.players.filter(p => !p.waiting);
       if (this.allPlayersAllIn()) {
         this.log(' all players all in');
         if (this.roundData.bets.length == 1) {
@@ -391,6 +420,7 @@ const Game = function (name, host) {
             playerResult.player.setStatus(`${playerResult.hand.name} (${formattedCards})`);
           }
           const winningData = this.distributeMoney(roundResults);
+          this.calculateSpirituality(winningData);
           this.revealCards(winningData.filter((a) => a.winner));
         } else {
           this.log('This stage of the round is INVALID!!');
@@ -418,7 +448,12 @@ const Game = function (name, host) {
           currTurnIndex = this.players.findIndex(
             (p) => p.getStatus() === 'Their Turn'
           );
-          this.players[currTurnIndex].setStatus('');
+          if (currTurnIndex !== -1) {
+            this.players[currTurnIndex].setStatus('');
+          } else {
+            // If no one has turn (e.g. after some state issues), find someone to give turn
+            currTurnIndex = 0;
+          }
         }
         let count = 0;
         do {
@@ -426,7 +461,8 @@ const Game = function (name, host) {
           count ++;
         } while (
           (this.players[currTurnIndex].getStatus() == 'Fold'
-          || this.players[currTurnIndex].allIn)
+          || this.players[currTurnIndex].allIn
+          || this.players[currTurnIndex].waiting)
           && count < Object.keys(this.players).length * 2 // Avoid infinite loop, allow search twice on all players
         );
         this.players[currTurnIndex].setStatus('Their Turn');
@@ -687,45 +723,57 @@ const Game = function (name, host) {
         const winnerGain = Math.round(totalInvestedByOthers * MULTIPLIER);
 
         this.broadcastLog(`<b>${nonFolderPlayer.getUsername()} wins the pot of $${pot} (All others folded).</b>`);
-        if (winnerUser) {
-          winnerUser.rating = (winnerUser.rating || 0) + winnerGain;
-          await winnerUser.save();
+    if (winnerUser) {
+      winnerUser.rating = (winnerUser.rating || 0) + winnerGain;
+      await winnerUser.save();
 
-          const history = await RatingHistory.create({
-            rating_calculation_id: calc.id,
-            user_id: winnerUser.id,
-            rating_after: winnerUser.rating,
-            rank: 1
-          });
-          await history.save();
-        }
+      const history = await RatingHistory.create({
+        rating_calculation_id: calc.id,
+        user_id: winnerUser.id,
+        rating_after: winnerUser.rating,
+        rank: 1
+      });
+      await history.save();
+    }
 
-        // Losers (Folders who invested)
-        for (const p of this.players) {
-          if (p !== nonFolderPlayer) {
-            const invested = this.getTotalInvested(p);
-            if (invested > 0) {
-              const loserUser = await User.fromName(p.getUsername());
-              if (loserUser) {
-                const loserLoss = Math.round(invested * MULTIPLIER);
-                loserUser.rating = (loserUser.rating || 0) - loserLoss;
-                await loserUser.save();
+    const netResults = [];
+    netResults.push({
+      player: nonFolderPlayer,
+      result: pot - this.getTotalInvested(nonFolderPlayer)
+    });
 
-                const history = await RatingHistory.create({
-                  rating_calculation_id: calc.id,
-                  user_id: loserUser.id,
-                  rating_after: loserUser.rating,
-                  rank: 2
-                });
-                await history.save();
-              }
-            }
+    // Losers (Folders who invested)
+    for (const p of this.players) {
+      if (p !== nonFolderPlayer) {
+        const invested = this.getTotalInvested(p);
+        netResults.push({
+          player: p,
+          result: -invested
+        });
+        if (invested > 0) {
+          const loserUser = await User.fromName(p.getUsername());
+          if (loserUser) {
+            const loserLoss = Math.round(invested * MULTIPLIER);
+            loserUser.rating = (loserUser.rating || 0) - loserLoss;
+            await loserUser.save();
+
+            const history = await RatingHistory.create({
+              rating_calculation_id: calc.id,
+              user_id: loserUser.id,
+              rating_after: loserUser.rating,
+              rank: 2
+            });
+            await history.save();
           }
         }
-      } catch (err) {
-        console.error(`Failed to update poker rating (fold): ${err.message}`);
       }
-    })();
+    }
+
+    this.calculateSpirituality(netResults);
+  } catch (err) {
+    console.error(`Failed to update poker rating (fold): ${err.message}`);
+  }
+})();
 
     let cardData = [];
     for (let i = 0; i < this.players.length; i++) {
@@ -781,17 +829,19 @@ const Game = function (name, host) {
 
   this.allPlayersAllIn = () => {
     let participatingPlayers = 0;
-    for (player of this.players) {
+    const activePlayers = this.players.filter(p => !p.waiting);
+    for (player of activePlayers) {
       if (!player.allIn && player.getStatus() != 'Fold') participatingPlayers++;
     }
     return participatingPlayers <= 1;
   };
 
   this.isStageComplete = () => {
+    const activePlayers = this.players.filter(p => !p.waiting);
     let allPlayersPresent = false;
     let numUnfolded = 0;
-    for (let i = 0; i < this.players.length; i++) {
-      if (this.players[i].status != 'Fold' && !this.players[i].allIn)
+    for (let i = 0; i < activePlayers.length; i++) {
+      if (activePlayers[i].status != 'Fold' && !activePlayers[i].allIn)
         numUnfolded++;
     }
     const currRound = this.getCurrentRoundBets();
@@ -805,7 +855,7 @@ const Game = function (name, host) {
     }
     this.log('all players present ' + allPlayersPresent);
     let allPlayersCall = true;
-    for (player of this.players) {
+    for (player of activePlayers) {
       if (
         player.getStatus() != 'Fold' &&
         this.getPlayerBetInStage(player) != this.getCurrentTopBet() &&
@@ -900,7 +950,12 @@ const Game = function (name, host) {
   };
 
   this.broadcastLog = (message) => {
-    this.emitPlayers('gameLog', { message: message });
+    let msg = message;
+    if (this.smokeScreenActive) {
+      // Mask dollar amounts like $50 or $100.50 with ???
+      msg = msg.replace(/\$\d+(\.\d+)?/g, '$???');
+    }
+    this.emitPlayers('gameLog', { message: msg });
   };
 
   this.findPlayer = (socketId) => {
@@ -971,6 +1026,7 @@ const Game = function (name, host) {
       });
     }
     this.lastMoveParsed = { move: 'Fold', player: player };
+    player.isSilenced = false;
     this.moveOntoNextPlayer();
     return true;
   };
@@ -1022,6 +1078,7 @@ const Game = function (name, host) {
       }
       this.moveOntoNextPlayer();
       this.broadcastLog(`${player.getUsername()} called (Total bet: $${this.getPlayerBetInStage(player)}).`);
+      player.isSilenced = false;
       return true;
     } else {
       if (
@@ -1040,7 +1097,6 @@ const Game = function (name, host) {
           );
           player.money = 0;
           player.allIn = true;
-          this.moveOntoNextPlayer();
           this.broadcastLog(`${player.getUsername()} called All-In (Total bet: $${this.getPlayerBetInStage(player)}).`);
         } else {
           this.setCurrentRoundBets(
@@ -1051,9 +1107,10 @@ const Game = function (name, host) {
             )
           );
           player.money = player.money - (topBet - currBet);
-          this.moveOntoNextPlayer();
           this.broadcastLog(`${player.getUsername()} called (Total bet: $${this.getPlayerBetInStage(player)}).`);
         }
+        player.isSilenced = false;
+        this.moveOntoNextPlayer();
         return true;
       } else {
         this.log('this should not happen');
@@ -1078,6 +1135,7 @@ const Game = function (name, host) {
         player.money = player.money - bet;
         if (player.money == 0) player.allIn = true;
         this.broadcastLog(`${player.getUsername()} bet $${bet}${player.allIn ? ' (All-In)' : ''}.`);
+        player.isSilenced = false;
         this.moveOntoNextPlayer();
         return true;
       }
@@ -1110,6 +1168,7 @@ const Game = function (name, host) {
       });
     }
     this.broadcastLog(`${player.getUsername()} checked.`);
+    player.isSilenced = false;
     this.moveOntoNextPlayer();
     return true;
   };
@@ -1119,10 +1178,17 @@ const Game = function (name, host) {
     const topBet = this.getCurrentTopBet();
     const player = this.findPlayer(socket.id);
     const currBet = this.getPlayerBetInStage(player);
-    const moneyToRemove = bet - currBet;
+    
+    let totalBet = bet;
+    if (this.smokeScreenActive) {
+      // In smoke screen, 'bet' is treated as delta
+      totalBet = topBet + bet;
+    }
+
+    const moneyToRemove = totalBet - currBet;
     if (
       moneyToRemove > 0 &&
-      bet >= topBet &&
+      totalBet >= topBet &&
       player.getMoney() - moneyToRemove >= 0
     ) {
       if (currBet === 0) {
@@ -1133,20 +1199,21 @@ const Game = function (name, host) {
         );
         this.getCurrentRoundBets().push({
           player: player.getUsername(),
-          bet: bet,
+          bet: totalBet,
         });
       } else {
         this.setCurrentRoundBets(
           this.getCurrentRoundBets().map((a) =>
             a.player == player.getUsername()
-              ? { player: player.getUsername(), bet: bet }
+              ? { player: player.getUsername(), bet: totalBet }
               : a
           )
         );
       }
       player.money -= moneyToRemove;
       if (player.money == 0) player.allIn = true;
-      this.broadcastLog(`${player.getUsername()} raised to $${bet}${player.allIn ? ' (All-In)' : ''}.`);
+      this.broadcastLog(`${player.getUsername()} raised to $${totalBet}${player.allIn ? ' (All-In)' : ''}.`);
+      player.isSilenced = false;
       this.moveOntoNextPlayer();
       return true;
     }
@@ -1185,7 +1252,96 @@ const Game = function (name, host) {
       possibleMoves.raise = 'no';
       possibleMoves.call = 'all-in';
     }
+    if (player.isSilenced) {
+      possibleMoves.raise = 'no';
+      possibleMoves.allIn = 'no';
+    }
+    if (this.smokeScreenActive) {
+      possibleMoves.isSmoke = true;
+    }
     return possibleMoves;
+  };
+
+  this.calculateSpirituality = (netResults) => {
+    for (const res of netResults) {
+      if (res.result < 0) {
+        const points = Math.floor(Math.abs(res.result) / 10);
+        if (points > 0) {
+          res.player.spirituality += points;
+          this.broadcastLog(`${res.player.getUsername()} gained ${points} Spirituality.`);
+        }
+      }
+    }
+  };
+
+  this.assignSkills = () => {
+    const skills = [
+      { id: 'reveal', name: 'Reveal Hand (明牌)', cost: 0 },
+      { id: 'swap', name: 'Swap Card (换牌术)', cost: 5 },
+      { id: 'silence', name: 'Silence (沉默)', cost: 10 },
+      { id: 'smoke', name: 'Smoke Screen (烟雾弹)', cost: 20 },
+      { id: 'fate', name: 'Exchange Fate (交换命运)', cost: 30 }
+    ];
+
+    for (const player of this.players) {
+      const affordable = skills.filter(s => s.cost <= player.spirituality);
+      if (affordable.length > 0) {
+        player.assignedSkill = affordable[Math.floor(Math.random() * affordable.length)];
+      } else {
+        player.assignedSkill = null;
+      }
+    }
+  };
+
+  this.useSkill = (socket, targetName) => {
+    const player = this.findPlayer(socket.id);
+    if (!this.roundInProgress || !player || !player.assignedSkill || player.skillUsed) return;
+
+    const skill = player.assignedSkill;
+    const target = targetName ? this.players.find(p => p.getUsername() === targetName) : null;
+
+    if (skill.id === 'reveal') {
+      player.revealed = true;
+      this.broadcastLog(`${player.getUsername()} used <b>Reveal Hand</b>!`);
+    } else if (skill.id === 'swap') {
+      const cardIndex = (targetName !== undefined && !isNaN(parseInt(targetName))) ? parseInt(targetName) : player.cards.length - 1;
+      player.cards.splice(cardIndex, 1);
+      player.addCard(this.deck.dealRandomCard());
+      player.cards.sort((a, b) => a.compare(b));
+      player.emit('dealt', {
+        currBet: this.getCurrentTopBet(),
+        username: player.getUsername(),
+        cards: player.cards,
+        players: this.players.filter(p => !p.waiting).map(p => p.username),
+      });
+      this.broadcastLog(`${player.getUsername()} used <b>Swap Card</b>!`);
+    } else if (skill.id === 'silence') {
+      if (!target) return;
+      target.isSilenced = true;
+      this.broadcastLog(`${player.getUsername()} used <b>Silence</b> on ${target.getUsername()}!`);
+    } else if (skill.id === 'smoke') {
+      this.smokeScreenActive = true;
+      this.broadcastLog(`${player.getUsername()} used <b>Smoke Screen</b>! Information is now hidden.`);
+    } else if (skill.id === 'fate') {
+      if (!target) return;
+      const tempCards = player.cards;
+      player.cards = target.cards;
+      target.cards = tempCards;
+
+      [player, target].forEach(p => {
+        p.emit('dealt', {
+          currBet: this.getCurrentTopBet(),
+          username: p.getUsername(),
+          cards: p.cards,
+          players: this.players.filter(p => !p.waiting).map(p => p.username),
+        });
+      });
+      this.broadcastLog(`${player.getUsername()} used <b>Exchange Fate</b> with ${target.getUsername()}!`);
+    }
+
+    player.spirituality -= skill.cost;
+    player.skillUsed = true;
+    this.rerender();
   };
 };
 

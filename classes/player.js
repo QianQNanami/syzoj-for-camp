@@ -13,6 +13,11 @@ const Player = function (playerName, socket, debug) {
   this.away = false;
   this.waiting = false;
   this.pendingExit = false;
+  this.spirituality = 0;
+  this.assignedSkill = null;
+  this.skillUsed = false;
+  this.isSilenced = false;
+  this.revealed = false;
   this.debug = debug || false;
 
   this.addCard = (card) => {
