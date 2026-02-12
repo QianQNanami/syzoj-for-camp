@@ -143,12 +143,7 @@ export default class Problem extends Model {
     if (user && await user.hasPrivilege('manage_problem')) return true;
     if (user && this.user_id === user.id) return true;
 
-    let groups = await ProblemGroup.find({ where: { problem_id: this.id } });
-    if (groups && groups.length > 0) {
-      return await this.isAllowedViewBy(user, this.id);
-    }
-
-    return true;
+    return await this.isAllowedViewBy(user, this.id);
   }
 
   async isAllowedManageBy(user) {

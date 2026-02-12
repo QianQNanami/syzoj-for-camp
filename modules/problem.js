@@ -232,21 +232,13 @@ app.get('/problem/:id', async (req, res) => {
     if (!problem) throw new ErrorMessage('无此题目。');
 
     if (!await problem.isAllowedUseBy(res.locals.user)) {
-      throw new ErrorMessage('您没有权限进行此操作。');
-    }
-
-    if(!await problem.isAllowedViewBy(res.locals.user, id)) {
-        throw new ErrorMessage('您没有权限访问本题。');
+      throw new ErrorMessage('您没有权限访问本题。');
     }
 
     problem.allowedEdit = await problem.isAllowedEditBy(res.locals.user);
     problem.allowedManage = await problem.isAllowedManageBy(res.locals.user);
 
-    if (problem.is_public || problem.allowedEdit || (res.locals.user && (res.locals.user.is_admin || res.locals.user.user_type === 'admin' || res.locals.user.user_type === 'lecturer'))) {
-      await syzoj.utils.markdown(problem, ['description', 'input_format', 'output_format', 'example', 'limit_and_hint']);
-    } else {
-      throw new ErrorMessage('您没有权限进行此操作。');
-    }
+    await syzoj.utils.markdown(problem, ['description', 'input_format', 'output_format', 'example', 'limit_and_hint']);
 
     let state = await problem.getJudgeState(res.locals.user, false);
 
