@@ -199,6 +199,8 @@ app.get('/user/:id', async (req, res) => {
         const contest = await Contest.findById(calculation.contest_id);
         contestName = contest.title;
         participants = await ContestPlayer.count({ contest_id: contest.id });
+      } else if (history.poker_hand) {
+        contestName = `${contestName} - ${history.poker_hand}`;
       }
 
       ratingHistories.push({

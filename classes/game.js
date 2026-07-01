@@ -593,6 +593,10 @@ const Game = function (name, host) {
         const RatingCalculation = syzoj.model('rating_calculation');
         const RatingHistory = syzoj.model('rating_history');
         const User = syzoj.model('user');
+        const winnerHands = {};
+        for (const winner of result.winnerData) {
+          winnerHands[winner.player.getUsername()] = winner.handTitle;
+        }
         
         // Multiplier: 10
         const MULTIPLIER = 10;
@@ -614,7 +618,8 @@ const Game = function (name, host) {
             rating_calculation_id: calc.id,
             user_id: user.id,
             rating_after: user.rating,
-            rank: p.winner ? 1 : 2
+            rank: p.winner ? 1 : 2,
+            poker_hand: p.winner ? winnerHands[p.player.getUsername()] || p.player.getStatus() : p.player.getStatus()
           });
           await history.save();
         }
@@ -731,7 +736,8 @@ const Game = function (name, host) {
         rating_calculation_id: calc.id,
         user_id: winnerUser.id,
         rating_after: winnerUser.rating,
-        rank: 1
+        rank: 1,
+        poker_hand: 'All others folded'
       });
       await history.save();
     }
@@ -761,7 +767,8 @@ const Game = function (name, host) {
               rating_calculation_id: calc.id,
               user_id: loserUser.id,
               rating_after: loserUser.rating,
-              rank: 2
+              rank: 2,
+              poker_hand: 'Fold'
             });
             await history.save();
           }

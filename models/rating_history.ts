@@ -19,6 +19,9 @@ export default class RatingHistory extends Model {
   @TypeORM.Column({ nullable: true, type: "integer" })
   rank: number;
 
+  @TypeORM.Column({ nullable: true, type: "varchar", length: 255 })
+  poker_hand: string;
+
   user: User;
 
   async loadRelationships() {
