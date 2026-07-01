@@ -24,6 +24,9 @@
     "url": "https://github.com/syzoj/syzoj/issues"
   },
   "homepage": "https://github.com/syzoj/syzoj#readme",
+  "devDependencies": {
+    "@types/node": "11.11.4"
+  },
   "dependencies": {
     "@menci/luogu-openapi": "^1.0.0",
     "@types/fs-extra": "^5.0.5",
