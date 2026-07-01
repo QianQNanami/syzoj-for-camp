@@ -4,9 +4,233 @@ let ContestPlayer = syzoj.model('contest_player');
 let Problem = syzoj.model('problem');
 let JudgeState = syzoj.model('judge_state');
 let User = syzoj.model('user');
+let UserTeacher = syzoj.model('user-teacher');
 
 const jwt = require('jsonwebtoken');
+const Email = require('../libs/email');
 const { getSubmissionInfo, getRoughResult, processOverallResult } = require('../libs/submissions_process');
+
+const contestEmailTasks = {};
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function csvCell(s) {
+  return String(s == null ? '' : s).replace(/[\r\n]+/g, ' ').replace(/,/g, '，');
+}
+
+function isEmailTaskRunning(task) {
+  return task && (task.status === 'pending' || task.status === 'running');
+}
+
+function getRunningEmailTask(contestId) {
+  return Object.values(contestEmailTasks).find(task => task.contest_id === contestId && isEmailTaskRunning(task));
+}
+
+function formatContestProblemResult(contest, player, problem) {
+  const detail = player.score_details && player.score_details[problem.id];
+  if (!detail) return '';
+
+  if (contest.type === 'acm') {
+    if (detail.accepted) {
+      const count = detail.unacceptedCount ? detail.unacceptedCount : '';
+      return `+${count} ${syzoj.utils.formatTime(detail.acceptedTime - contest.start_time)}`;
+    }
+    if (detail.unacceptedCount) return `-${detail.unacceptedCount}`;
+    return '';
+  }
+
+  if (detail.weighted_score != null) return Math.round(detail.weighted_score);
+  return 0;
+}
+
+async function buildContestScoreData(contest) {
+  await contest.loadRelationships();
+  const problems_id = await contest.getProblems();
+  const problems = (await problems_id.mapAsync(async id => await Problem.findById(id))).filter(x => x);
+  const players_id = [];
+  if (contest.ranklist && contest.ranklist.ranklist) {
+    for (let i = 1; i <= contest.ranklist.ranklist.player_num; i++) players_id.push(contest.ranklist.ranklist[i]);
+  }
+
+  const ranklist = (await players_id.mapAsync(async player_id => {
+    const player = await ContestPlayer.findById(player_id);
+    if (!player) return null;
+    if (!player.score_details) player.score_details = {};
+
+    if (contest.type === 'noi' || contest.type === 'ioi') {
+      player.score = 0;
+    }
+
+    for (let i in player.score_details) {
+      player.score_details[i].judge_state = await JudgeState.findById(player.score_details[i].judge_id);
+      if (contest.type === 'noi' || contest.type === 'ioi') {
+        let multiplier = (contest.ranklist.ranking_params || {})[i] || 1.0;
+        player.score_details[i].weighted_score = player.score_details[i].score == null ? null : Math.round(player.score_details[i].score * multiplier);
+        player.score += player.score_details[i].weighted_score;
+      }
+    }
+
+    const user = await User.findById(player.user_id);
+    return { user, player };
+  })).filter(item => item && item.user);
+
+  const byUserId = {};
+  let rank = 0, lastItem = null;
+  for (let i = 0; i < ranklist.length; i++) {
+    const item = ranklist[i];
+
+    if (contest.type === 'noi' || contest.type === 'ioi') {
+      if (i === 0 || item.player.score !== lastItem.player.score) rank = i + 1;
+    } else {
+      let timeSum = 0;
+      for (let problem of problems) {
+        if (item.player.score_details[problem.id] && item.player.score_details[problem.id].accepted) {
+          timeSum += (item.player.score_details[problem.id].acceptedTime - contest.start_time) + (item.player.score_details[problem.id].unacceptedCount * 20 * 60);
+        }
+      }
+      item.player.timeSum = timeSum;
+      if (i === 0 || item.player.score !== lastItem.player.score || item.player.timeSum !== lastItem.player.timeSum) rank = i + 1;
+    }
+
+    item.rank = rank;
+    item.problemResults = problems.map(problem => formatContestProblemResult(contest, item.player, problem));
+    byUserId[item.user.id] = item;
+    lastItem = item;
+  }
+
+  return { problems, byUserId };
+}
+
+function buildTeacherReportBody(contest, teacher, students, scoreData) {
+  const lines = [];
+  lines.push(`比赛标题：${contest.title}`);
+  lines.push(`教师：${teacher.realname || teacher.username}`);
+  lines.push(`发送时间：${syzoj.utils.formatDate(syzoj.utils.getCurrentDate())}`);
+  lines.push('');
+
+  const problemHeaders = scoreData.problems.map((problem, i) => csvCell(problem && syzoj.utils.removeTitleTag(problem.title || `P${i + 1}`) || `P${i + 1}`));
+  if (contest.type === 'acm') {
+    lines.push(['排名', '用户名', '姓名', '状态', '通过数量', '罚时'].concat(problemHeaders).join(','));
+  } else {
+    lines.push(['排名', '用户名', '姓名', '状态', '总分'].concat(problemHeaders).join(','));
+  }
+
+  for (const student of students) {
+    const score = scoreData.byUserId[student.id];
+    if (!score) {
+      const blanks = scoreData.problems.map(() => '');
+      lines.push(['', csvCell(student.username), csvCell(student.realname), '未参赛', ''].concat(blanks).join(','));
+      continue;
+    }
+
+    if (contest.type === 'acm') {
+      lines.push([
+        score.rank,
+        csvCell(student.username),
+        csvCell(student.realname),
+        '已参赛',
+        score.player.score || 0,
+        syzoj.utils.formatTime(score.player.timeSum || 0)
+      ].concat(score.problemResults.map(csvCell)).join(','));
+    } else {
+      lines.push([
+        score.rank,
+        csvCell(student.username),
+        csvCell(student.realname),
+        '已参赛',
+        score.player.score || 0
+      ].concat(score.problemResults.map(csvCell)).join(','));
+    }
+  }
+
+  return `<pre>${escapeHtml(lines.join('\n'))}</pre>`;
+}
+
+async function buildTeacherReports(contest) {
+  const scoreData = await buildContestScoreData(contest);
+  const relations = await UserTeacher.find({
+    order: {
+      teacher_id: 'ASC',
+      user_id: 'ASC'
+    }
+  });
+  const teacherStudents = {};
+  for (let relation of relations) {
+    if (!teacherStudents[relation.teacher_id]) teacherStudents[relation.teacher_id] = [];
+    teacherStudents[relation.teacher_id].push(relation.user_id);
+  }
+
+  const reports = [];
+  for (let teacherId of Object.keys(teacherStudents)) {
+    const teacher = await User.findById(parseInt(teacherId));
+    if (!teacher || teacher.user_type !== 'teacher') continue;
+
+    const students = [];
+    for (let studentId of teacherStudents[teacherId]) {
+      const student = await User.findById(studentId);
+      if (student) students.push(student);
+    }
+    students.sort((a, b) => String(a.username || '').localeCompare(String(b.username || '')));
+
+    if (!students.some(student => scoreData.byUserId[student.id])) continue;
+    reports.push({
+      teacher,
+      students,
+      body: buildTeacherReportBody(contest, teacher, students, scoreData)
+    });
+  }
+
+  return reports;
+}
+
+async function runContestEmailTask(taskId) {
+  const task = contestEmailTasks[taskId];
+  if (!task) return;
+
+  task.status = 'running';
+  task.started_at = syzoj.utils.getCurrentDate();
+
+  try {
+    const contest = await Contest.findById(task.contest_id);
+    if (!contest) throw new Error('无此比赛。');
+
+    const reports = await buildTeacherReports(contest);
+    task.total = reports.length;
+
+    for (const report of reports) {
+      const teacherName = report.teacher.realname || report.teacher.username || `#${report.teacher.id}`;
+      if (!report.teacher.email) {
+        task.skipped++;
+        task.logs.push({ teacher: teacherName, email: '', status: 'skipped', message: '教师邮箱为空。' });
+        continue;
+      }
+
+      try {
+        await Email.send(report.teacher.email, `[${syzoj.config.title}] 比赛成绩：${contest.title}`, report.body);
+        task.success++;
+        task.logs.push({ teacher: teacherName, email: report.teacher.email, status: 'success', message: '发送成功。' });
+      } catch (e) {
+        task.failed++;
+        task.logs.push({ teacher: teacherName, email: report.teacher.email, status: 'failed', message: e.message });
+      }
+    }
+
+    task.status = 'done';
+  } catch (e) {
+    task.status = 'failed';
+    task.error = e.message;
+    syzoj.log(e);
+  } finally {
+    task.finished_at = syzoj.utils.getCurrentDate();
+  }
+}
 
 app.get('/contests', async (req, res) => {
   try {
@@ -409,6 +633,97 @@ app.get('/contest/:id/ranklist', async (req, res) => {
     syzoj.log(e);
     res.render('error', {
       err: e
+    });
+  }
+});
+
+app.post('/contest/:id/email_report', async (req, res) => {
+  try {
+    const contest_id = parseInt(req.params.id);
+    const contest = await Contest.findById(contest_id);
+    const curUser = res.locals.user;
+
+    if (!contest) throw new ErrorMessage('无此比赛。');
+    contest.admins = contest.admins || '';
+    if (!await contest.isSupervisior(curUser)) throw new ErrorMessage('您没有权限进行此操作。');
+    if (!contest.isEnded()) throw new ErrorMessage('比赛尚未结束，不能发送成绩邮件。');
+    if (!syzoj.config.email || syzoj.config.email.method !== 'smtp') throw new ErrorMessage('请先在后台邮件配置中启用 SMTP。');
+    if (!syzoj.config.email.options || !syzoj.config.email.options.host || !syzoj.config.email.options.username || !syzoj.config.email.options.password) {
+      throw new ErrorMessage('SMTP 配置不完整。');
+    }
+
+    const runningTask = getRunningEmailTask(contest.id);
+    if (runningTask) {
+      res.redirect(syzoj.utils.makeUrl(['contest', contest.id, 'email_report', runningTask.id]));
+      return;
+    }
+
+    const taskId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    contestEmailTasks[taskId] = {
+      id: taskId,
+      contest_id: contest.id,
+      contest_title: contest.title,
+      status: 'pending',
+      total: 0,
+      success: 0,
+      skipped: 0,
+      failed: 0,
+      logs: [],
+      created_at: syzoj.utils.getCurrentDate(),
+      created_by: curUser.id
+    };
+
+    setTimeout(() => runContestEmailTask(taskId), 0);
+    res.redirect(syzoj.utils.makeUrl(['contest', contest.id, 'email_report', taskId]));
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
+app.get('/contest/:id/email_report/:taskId', async (req, res) => {
+  try {
+    const contest_id = parseInt(req.params.id);
+    const contest = await Contest.findById(contest_id);
+    const curUser = res.locals.user;
+    const task = contestEmailTasks[req.params.taskId];
+
+    if (!contest) throw new ErrorMessage('无此比赛。');
+    contest.admins = contest.admins || '';
+    if (!await contest.isSupervisior(curUser)) throw new ErrorMessage('您没有权限进行此操作。');
+    if (!task || task.contest_id !== contest.id) throw new ErrorMessage('无此发送任务。');
+
+    res.render('contest_email_report', {
+      contest,
+      task
+    });
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
+app.get('/contest/:id/email_report/:taskId/status', async (req, res) => {
+  try {
+    const contest_id = parseInt(req.params.id);
+    const contest = await Contest.findById(contest_id);
+    const curUser = res.locals.user;
+    const task = contestEmailTasks[req.params.taskId];
+
+    if (!contest) throw new ErrorMessage('无此比赛。');
+    contest.admins = contest.admins || '';
+    if (!await contest.isSupervisior(curUser)) throw new ErrorMessage('您没有权限进行此操作。');
+    if (!task || task.contest_id !== contest.id) throw new ErrorMessage('无此发送任务。');
+
+    res.json(task);
+  } catch (e) {
+    res.status(403).json({
+      status: 'failed',
+      error: e.message
     });
   }
 });

@@ -1,0 +1,47 @@
+<% this.adminPage = 'email'; %>
+<% include admin_header %>
+<% if (success) { %>
+<div class="ui success message">邮件配置已保存。</div>
+<% } %>
+<form method="post" class="ui form">
+  <h4 class="ui dividing header">SMTP</h4>
+  <div class="two fields">
+    <div class="field">
+      <label>SMTP 主机</label>
+      <input type="text" name="host" value="<%= config.host %>">
+    </div>
+    <div class="field">
+      <label>SMTP 端口</label>
+      <input type="number" name="port" value="<%= config.port %>">
+    </div>
+  </div>
+  <div class="two fields">
+    <div class="field">
+      <label>用户名</label>
+      <input type="text" name="username" value="<%= config.username %>">
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input type="password" name="password" value="<%= config.password %>">
+    </div>
+  </div>
+  <div class="field">
+    <label>发件地址</label>
+    <input type="text" name="address" value="<%= config.address %>">
+  </div>
+  <div class="inline field">
+    <div class="ui toggle checkbox">
+      <input name="allowUnauthorizedTls" type="checkbox"<% if (config.allowUnauthorizedTls) { %> checked<% } %>>
+      <label>允许未受信任 TLS 证书</label>
+    </div>
+  </div>
+  <div style="text-align: center; ">
+    <button class="ui blue labeled icon button"><i class="ui edit icon"></i>提交</button>
+  </div>
+</form>
+<script>
+$(function () {
+  $('.ui.checkbox').checkbox();
+});
+</script>
+<% include admin_footer %>

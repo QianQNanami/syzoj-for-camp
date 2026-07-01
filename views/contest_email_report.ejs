@@ -1,0 +1,72 @@
+<% this.title = '发送成绩邮件 - ' + contest.title %>
+<% include header %>
+<div class="padding">
+  <h1 class="ui header"><%= contest.title %></h1>
+  <h3 class="ui dividing header">发送成绩邮件</h3>
+  <div id="task-message" class="ui message">
+    <div class="header" id="task-status">等待中</div>
+    <p id="task-summary">正在读取发送任务状态。</p>
+  </div>
+  <table class="ui very basic table">
+    <thead>
+      <tr>
+        <th>教师</th>
+        <th>邮箱</th>
+        <th>状态</th>
+        <th>信息</th>
+      </tr>
+    </thead>
+    <tbody id="task-logs">
+    </tbody>
+  </table>
+  <div style="text-align: center; margin-top: 30px; ">
+    <a href="<%= syzoj.utils.makeUrl(['contest', contest.id]) %>" class="ui labeled icon button"><i class="ui angle left icon"></i>返回比赛</a>
+  </div>
+</div>
+<script>
+var statusUrl = <%- serializejs(syzoj.utils.makeUrl(['contest', contest.id, 'email_report', task.id, 'status'])) %>;
+
+function renderTask(task) {
+  var statusText = {
+    pending: '等待中',
+    running: '发送中',
+    done: '已完成',
+    failed: '失败'
+  }[task.status] || task.status;
+
+  $('#task-status').text(statusText);
+  $('#task-summary').text('共 ' + task.total + ' 位教师，成功 ' + task.success + '，跳过 ' + task.skipped + '，失败 ' + task.failed + (task.error ? '：' + task.error : '。'));
+
+  $('#task-message').removeClass('info success error');
+  if (task.status === 'done') $('#task-message').addClass(task.failed ? 'info' : 'success');
+  else if (task.status === 'failed') $('#task-message').addClass('error');
+  else $('#task-message').addClass('info');
+
+  var rows = '';
+  for (var i = 0; i < task.logs.length; i++) {
+    var log = task.logs[i];
+    rows += '<tr>'
+      + '<td>' + $('<div>').text(log.teacher || '').html() + '</td>'
+      + '<td>' + $('<div>').text(log.email || '').html() + '</td>'
+      + '<td>' + $('<div>').text(log.status || '').html() + '</td>'
+      + '<td>' + $('<div>').text(log.message || '').html() + '</td>'
+      + '</tr>';
+  }
+  $('#task-logs').html(rows);
+
+  if (task.status !== 'pending' && task.status !== 'running') {
+    clearInterval(window.refreshTimer);
+  }
+}
+
+function refreshTask() {
+  $.getJSON(statusUrl, renderTask);
+}
+
+$(function () {
+  renderTask(<%- serializejs(task) %>);
+  window.refreshTimer = setInterval(refreshTask, 1500);
+  refreshTask();
+});
+</script>
+<% include footer %>

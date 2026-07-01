@@ -36,6 +36,9 @@
           <a class="ui small positive button" href="<%= submissionsUrl %>">提交记录</a>
           <% if (isSupervisior) { %>
             <a class="ui small button" href="<%= syzoj.utils.makeUrl(['contest', contest.id, 'edit']) %>">编辑比赛</a>
+            <% if (contest.ended) { %>
+              <a class="ui small teal button" href-post="<%= syzoj.utils.makeUrl(['contest', contest.id, 'email_report']) %>">发送成绩邮件</a>
+            <% } %>
             <% if (res.locals.user && (res.locals.user.is_admin || res.locals.user.user_type === 'admin')) { %>
               <a class="ui small orange button" href="<%= syzoj.utils.makeUrl(['contest', contest.id, 'export_all']) %>">一键导出所有题目</a>
             <% } %>

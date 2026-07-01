@@ -11,6 +11,19 @@ const RatingHistory = syzoj.model('rating_history');
 let ContestPlayer = syzoj.model('contest_player');
 const calcRating = require('../libs/rating');
 
+function getEmailConfig() {
+  const options = syzoj.config.email && syzoj.config.email.options || {};
+  return {
+    method: syzoj.config.email && syzoj.config.email.method || 'smtp',
+    address: options.address || '',
+    host: options.host || '',
+    port: options.port || 465,
+    username: options.username || '',
+    password: options.password || '',
+    allowUnauthorizedTls: options.allowUnauthorizedTls === true || options.allowUnauthorizedTls === 'true'
+  };
+}
+
 app.get('/admin/info', async (req, res) => {
   try {
     if (!res.locals.user || !res.locals.user.is_admin) throw new ErrorMessage('您没有权限进行此操作。');
@@ -111,6 +124,53 @@ app.post('/admin/config', async (req, res) => {
     await syzoj.utils.saveConfig();
 
     res.redirect(syzoj.utils.makeUrl(['admin', 'config']));
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    })
+  }
+});
+
+app.get('/admin/email', async (req, res) => {
+  try {
+    if (!res.locals.user || !res.locals.user.is_admin) throw new ErrorMessage('您没有权限进行此操作。');
+
+    res.render('admin_email', {
+      config: getEmailConfig(),
+      success: false
+    });
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    })
+  }
+});
+
+app.post('/admin/email', async (req, res) => {
+  try {
+    if (!res.locals.user || !res.locals.user.is_admin) throw new ErrorMessage('您没有权限进行此操作。');
+
+    const port = parseInt(req.body.port);
+    if (!req.body.host || !req.body.username || !req.body.password) throw new ErrorMessage('SMTP 主机、用户名和密码不能为空。');
+    if (isNaN(port) || port <= 0) throw new ErrorMessage('SMTP 端口不正确。');
+
+    objectPath.set(syzoj.configInFile, 'email.method', 'smtp');
+    objectPath.set(syzoj.configInFile, 'email.options.address', req.body.address || req.body.username);
+    objectPath.set(syzoj.configInFile, 'email.options.host', req.body.host);
+    objectPath.set(syzoj.configInFile, 'email.options.port', port);
+    objectPath.set(syzoj.configInFile, 'email.options.username', req.body.username);
+    objectPath.set(syzoj.configInFile, 'email.options.password', req.body.password);
+    objectPath.set(syzoj.configInFile, 'email.options.allowUnauthorizedTls', req.body.allowUnauthorizedTls === 'on');
+
+    syzoj.reloadConfig();
+    await syzoj.utils.saveConfig();
+
+    res.render('admin_email', {
+      config: getEmailConfig(),
+      success: true
+    });
   } catch (e) {
     syzoj.log(e);
     res.render('error', {
