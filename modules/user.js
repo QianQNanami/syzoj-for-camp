@@ -4,6 +4,62 @@ const RatingHistory = syzoj.model('rating_history');
 const Contest = syzoj.model('contest');
 const ContestPlayer = syzoj.model('contest_player');
 
+function normalizeIdList(value) {
+  if (!value) return [];
+  if (!Array.isArray(value)) value = [value];
+  return value.map(id => parseInt(id)).filter(id => !isNaN(id));
+}
+
+async function findUsersByIds(ids) {
+  ids = normalizeIdList(ids);
+  if (!ids.length) return [];
+
+  return await User.createQueryBuilder('users')
+    .where('users.id IN (:...ids)', { ids: ids })
+    .orderBy('users.username', 'ASC')
+    .getMany();
+}
+
+async function getUserEditData(editedUser, currentUser) {
+  let allGroups = null;
+  let userGroups = [];
+  let allTeachers = [];
+  let allStudents = [];
+  let userTeachers = [];
+  let userStudents = [];
+
+  if (editedUser) {
+    userGroups = (await editedUser.getGroup()).map(g => g.group_id);
+  }
+
+  if (editedUser && currentUser && currentUser.is_admin) {
+    allGroups = await syzoj.model('group').find();
+    allTeachers = await User.find({
+      where: { user_type: 'teacher' },
+      order: { username: 'ASC' }
+    });
+    allStudents = await User.find({
+      where: { user_type: 'student' },
+      order: { username: 'ASC' }
+    });
+
+    if (editedUser.user_type === 'student') {
+      userTeachers = (await editedUser.getTeacher()).map(x => x.teacher_id);
+    } else if (editedUser.user_type === 'teacher') {
+      userStudents = (await editedUser.getStudents()).map(x => x.user_id);
+    }
+  }
+
+  return {
+    allGroups,
+    userGroups,
+    allTeachers,
+    allStudents,
+    userTeachers,
+    userStudents
+  };
+}
+
 // Ranklist
 app.get('/ranklist', async (req, res) => {
   try {
@@ -112,6 +168,18 @@ app.get('/user/:id', async (req, res) => {
       groupNames = groups.map(g => g.group_name).join(', ');
     }
 
+    let teachers = [];
+    let students = [];
+    if (user.allowedEdit) {
+      if (user.user_type === 'student') {
+        let userTeachers = await user.getTeacher();
+        teachers = await findUsersByIds(userTeachers.map(x => x.teacher_id));
+      } else if (user.user_type === 'teacher') {
+        let userStudents = await user.getStudents();
+        students = await findUsersByIds(userStudents.map(x => x.user_id));
+      }
+    }
+
     const ratingHistoryValues = await RatingHistory.find({
       where: { user_id: user.id },
       order: { rating_calculation_id: 'ASC' }
@@ -147,7 +215,9 @@ app.get('/user/:id', async (req, res) => {
       show_user: user,
       statistics: statistics,
       ratingHistories: ratingHistories,
-      groupNames: groupNames
+      groupNames: groupNames,
+      teachers: teachers,
+      students: students
     });
   } catch (e) {
     syzoj.log(e);
@@ -172,18 +242,12 @@ app.get('/user/:id/edit', async (req, res) => {
 
     res.locals.user.allowedManage = await res.locals.user.hasPrivilege('manage_user');
 
-    let allGroups = null;
-    if (res.locals.user && res.locals.user.is_admin) {
-      allGroups = await syzoj.model('group').find();
-    }
-    let userGroups = (await user.getGroup()).map(g => g.group_id);
+    let editData = await getUserEditData(user, res.locals.user);
 
-    res.render('user_edit', {
+    res.render('user_edit', Object.assign({
       edited_user: user,
-      error_info: null,
-      allGroups: allGroups,
-      userGroups: userGroups
-    });
+      error_info: null
+    }, editData));
   } catch (e) {
     syzoj.log(e);
     res.render('error', {
@@ -233,12 +297,13 @@ app.post('/user/:id/edit', async (req, res) => {
       let privileges = req.body.privileges;
       await user.setPrivileges(privileges);
 
-      if (!req.body.groups) {
-        req.body.groups = [];
-      } else if (!Array.isArray(req.body.groups)) {
-        req.body.groups = [req.body.groups];
+      await user.setGroup(normalizeIdList(req.body.groups));
+
+      if (user.user_type === 'student') {
+        await user.setTeacher(normalizeIdList(req.body.teachers));
+      } else if (user.user_type === 'teacher') {
+        await user.setStudents(normalizeIdList(req.body.students));
       }
-      await user.setGroup(req.body.groups.map(id => parseInt(id)));
     }
 
     if (req.body.information !== user.information) {
@@ -266,19 +331,21 @@ app.post('/user/:id/edit', async (req, res) => {
     user.privileges = await user.getPrivileges();
     res.locals.user.allowedManage = await res.locals.user.hasPrivilege('manage_user');
 
-    let allGroups = null;
-    if (res.locals.user && res.locals.user.is_admin) {
-      allGroups = await syzoj.model('group').find();
-    }
-    let userGroups = (await user.getGroup()).map(g => g.group_id);
+    let editData = await getUserEditData(user, res.locals.user);
 
-    res.render('user_edit', {
+    res.render('user_edit', Object.assign({
       edited_user: user,
-      error_info: '',
-      allGroups: allGroups,
-      userGroups: userGroups
-    });
+      error_info: ''
+    }, editData));
   } catch (e) {
+    if (!user) {
+      syzoj.log(e);
+      res.render('error', {
+        err: e
+      });
+      return;
+    }
+
     try {
       user.privileges = await user.getPrivileges();
       if (res.locals.user)
@@ -287,11 +354,11 @@ app.post('/user/:id/edit', async (req, res) => {
       console.error(e);
     }
 
-    res.render('user_edit', {
+    let editData = await getUserEditData(user, res.locals.user);
+
+    res.render('user_edit', Object.assign({
       edited_user: user,
-      error_info: e.message,
-      allGroups: (res.locals.user && res.locals.user.is_admin) ? await syzoj.model('group').find() : null,
-      userGroups: (await user.getGroup()).map(g => g.group_id)
-    });
+      error_info: e.message
+    }, editData));
   }
 });

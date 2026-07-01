@@ -232,7 +232,7 @@ export default class User extends Model {
   }
 
   async isTeacher() {
-    if (this.user_type == UserType.Student) return true;
+    if (this.user_type == UserType.Teacher) return true;
     return false;
   }
 
@@ -282,7 +282,8 @@ export default class User extends Model {
 
   async setTeacher(newTeacher) {
     if (this.user_type == "student") {
-      let oldTeacher = await this.getTeacher();
+      newTeacher = Array.from(new Set((newTeacher || []).map(x => parseInt(x)).filter(x => !isNaN(x))));
+      let oldTeacher = (await this.getTeacher()).map(x => x.teacher_id);
 
       let delTeacher = oldTeacher.filter(x => !newTeacher.includes(x));
       let addTeacher = newTeacher.filter(x => !oldTeacher.includes(x));
@@ -293,13 +294,41 @@ export default class User extends Model {
           teacher_id: teacher
         } });
 
-        await obj.destroy();
+        if (obj) await obj.destroy();
       }
 
       for (let teacher of addTeacher) {
         let obj = await UserTeacher.create({
           user_id: this.id,
           teacher_id: teacher
+        });
+
+        await obj.save();
+      }
+    }
+  }
+
+  async setStudents(newStudents) {
+    if (this.user_type == "teacher") {
+      newStudents = Array.from(new Set((newStudents || []).map(x => parseInt(x)).filter(x => !isNaN(x))));
+      let oldStudents = (await this.getStudents()).map(x => x.user_id);
+
+      let delStudents = oldStudents.filter(x => !newStudents.includes(x));
+      let addStudents = newStudents.filter(x => !oldStudents.includes(x));
+
+      for (let student of delStudents) {
+        let obj = await UserTeacher.findOne({ where: {
+          user_id: student,
+          teacher_id: this.id
+        } });
+
+        if (obj) await obj.destroy();
+      }
+
+      for (let student of addStudents) {
+        let obj = await UserTeacher.create({
+          user_id: student,
+          teacher_id: this.id
         });
 
         await obj.save();

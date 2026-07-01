@@ -99,6 +99,25 @@
           <% } %>
         </select>
       </div>
+      <% if (edited_user.user_type === 'student') { %>
+      <div class="field">
+        <label>教师</label>
+        <select class="ui fluid search dropdown" multiple="" name="teachers">
+          <% for (let teacher of allTeachers) { %>
+            <option value="<%= teacher.id %>" <% if (userTeachers.includes(teacher.id)) { %>selected<% } %>><%= teacher.username %><% if (teacher.realname) { %>（<%= teacher.realname %>）<% } %></option>
+          <% } %>
+        </select>
+      </div>
+      <% } else if (edited_user.user_type === 'teacher') { %>
+      <div class="field">
+        <label>学生</label>
+        <select class="ui fluid search dropdown" multiple="" name="students">
+          <% for (let student of allStudents) { %>
+            <option value="<%= student.id %>" <% if (userStudents.includes(student.id)) { %>selected<% } %>><%= student.username %><% if (student.realname) { %>（<%= student.realname %>）<% } %></option>
+          <% } %>
+        </select>
+      </div>
+      <% } %>
       <% } %>
       <div style="text-align: center; margin-top: 30px; ">
         <button id="submit_button" type="submit" class="ui blue labeled icon button"><i class="ui icon edit"></i>修改</button>
