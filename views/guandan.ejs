@@ -1,0 +1,454 @@
+<% include header %>
+
+<style>
+#guandanGame {
+  display: none;
+}
+.gd-layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 16px;
+}
+.gd-card {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 54px;
+  height: 78px;
+  margin: 3px;
+  padding: 6px;
+  border: 1px solid #c9c9c9;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.12);
+  cursor: pointer;
+  user-select: none;
+  vertical-align: top;
+  font-weight: bold;
+}
+.gd-card.red {
+  color: #db2828;
+}
+.gd-card.black {
+  color: #1b1c1d;
+}
+.gd-card.joker {
+  color: #6435c9;
+}
+.gd-card.selected {
+  transform: translateY(-10px);
+  border-color: #2185d0;
+  box-shadow: 0 0 0 2px rgba(33,133,208,.2);
+}
+.gd-card.disabled {
+  opacity: .35;
+}
+.gd-card-rank {
+  font-size: 16px;
+  line-height: 18px;
+}
+.gd-card-suit {
+  align-self: flex-end;
+  font-size: 18px;
+}
+.gd-hand {
+  min-height: 100px;
+  padding: 10px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.gd-table {
+  min-height: 180px;
+}
+.gd-log {
+  height: 280px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 8px;
+  background: #fafafa;
+  border: 1px solid #ddd;
+}
+.gd-player.current {
+  border-left: 4px solid #fbbd08;
+}
+.gd-player.self {
+  background: #f8ffff;
+}
+.gd-finish {
+  min-height: 32px;
+}
+</style>
+
+<div id="guandanLobby" class="ui segment">
+  <h2 class="ui header">掼蛋</h2>
+  <p>四人两两组队，按加入顺序落座：1/3 号一队，2/4 号一队。</p>
+  <div class="ui center aligned basic segment">
+    <button id="hostButton" class="ui large primary button">创建房间</button>
+    <button id="joinButton" class="ui large secondary button">加入房间</button>
+  </div>
+</div>
+
+<div id="guandanGame">
+  <div class="gd-layout">
+    <div>
+      <div class="ui segment">
+        <h4 class="ui dividing header">牌局</h4>
+        <div id="roomInfo" class="ui relaxed list"></div>
+        <div id="phaseInfo" class="ui message"></div>
+        <div id="actionArea" class="ui vertical fluid buttons"></div>
+      </div>
+
+      <div class="ui segment">
+        <h4 class="ui dividing header">名次</h4>
+        <div id="finishOrder" class="gd-finish"></div>
+      </div>
+
+      <div class="ui segment">
+        <h4 class="ui dividing header">日志</h4>
+        <div id="gameLog" class="gd-log"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="ui segment">
+        <h3 class="ui header" id="tableTitle"></h3>
+        <div class="ui two column stackable grid" id="playersGrid"></div>
+      </div>
+
+      <div class="ui segment gd-table">
+        <h4 class="ui dividing header">上一手</h4>
+        <div id="lastPlay"></div>
+      </div>
+
+      <div class="ui segment">
+        <h4 class="ui dividing header">我的手牌</h4>
+        <div id="myHand" class="gd-hand"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="ui modal" id="hostModal">
+  <div class="header">创建掼蛋房间</div>
+  <div class="content">
+    <div id="hostModalContent">
+      <input type="hidden" id="hostName-field" value="<%= user.username %>">
+      <button onclick="beginHost()" class="ui primary button">获取房间号</button>
+    </div>
+    <div id="hostPlayers" class="ui relaxed list"></div>
+    <div id="startGameArea" style="margin-top: 10px;"></div>
+  </div>
+  <div class="actions">
+    <div class="ui cancel button">关闭</div>
+  </div>
+</div>
+
+<div class="ui modal" id="joinModal">
+  <div class="header">加入掼蛋房间</div>
+  <div class="content">
+    <div id="joinModalContent">
+      <input type="hidden" id="joinName-field" value="<%= user.username %>">
+      <div class="ui form">
+        <div class="field">
+          <label>房间号</label>
+          <input type="text" id="code-field" placeholder="4 位房间号">
+        </div>
+        <button onclick="joinRoom()" class="ui primary button">加入</button>
+      </div>
+    </div>
+    <div id="joinPlayers" class="ui relaxed list"></div>
+  </div>
+  <div class="actions">
+    <div class="ui cancel button">关闭</div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+var socket = io('/guandan_socket');
+var currentUser = "<%= user.username %>";
+var currentState = null;
+var selectedCards = new Set();
+var hostedCode = null;
+
+$(document).ready(function () {
+  $('#hostButton').click(function() { $('#hostModal').modal('show'); });
+  $('#joinButton').click(function() { $('#joinModal').modal('show'); });
+});
+
+function escapeHtml(text) {
+  return String(text == null ? '' : text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function beginHost() {
+  socket.emit('host', { username: currentUser });
+}
+
+function joinRoom() {
+  socket.emit('join', { code: $('#code-field').val(), username: currentUser });
+}
+
+function startGame(code) {
+  socket.emit('startGame', { code: code, username: currentUser });
+}
+
+function renderPlayersList(players) {
+  return players.map(function(name, index) {
+    return '<div class="item"><i class="user icon"></i><div class="content">' +
+      escapeHtml(name) + ' <span class="ui mini label">座位 ' + (index + 1) + '</span>' +
+      ' <span class="ui mini ' + (index % 2 === 0 ? 'blue' : 'green') + ' label">队伍 ' + (index % 2 + 1) + '</span></div></div>';
+  }).join('');
+}
+
+function renderStartArea(data) {
+  if (data.host === currentUser) {
+    if (data.players.length === 4) {
+      $('#startGameArea').html('<button onclick="startGame(\'' + data.code + '\')" class="ui green fluid button">开始游戏</button>');
+    } else {
+      $('#startGameArea').html('<div class="ui yellow message">需要 4 人才能开始。</div>');
+    }
+  }
+}
+
+socket.on('hostRoom', function (data) {
+  if (!data) {
+    alert('创建房间失败。');
+    return;
+  }
+  hostedCode = data.code;
+  $('#hostModalContent').html('<h5>房间号：<code>' + escapeHtml(data.code) + '</code></h5>');
+  $('#hostPlayers').html(renderPlayersList(data.players));
+  renderStartArea(data);
+});
+
+socket.on('joinRoom', function (data) {
+  if (!data) {
+    $('#joinModal').modal('hide');
+    alert('房间不存在、已满或用户名重复。');
+    return;
+  }
+  $('#joinModalContent').html('<h5>' + escapeHtml(data.host) + ' 的房间</h5><p>等待房主开始游戏。</p>');
+  $('#joinPlayers').html(renderPlayersList(data.players));
+});
+
+socket.on('joinRoomUpdate', function (data) {
+  $('#hostPlayers').html(renderPlayersList(data.players));
+  $('#joinPlayers').html(renderPlayersList(data.players));
+  renderStartArea(data);
+});
+
+socket.on('gameBegin', function (data) {
+  $('#joinModal').modal('hide');
+  $('#hostModal').modal('hide');
+  if (!data) {
+    alert('游戏启动失败。');
+    return;
+  }
+  $('#guandanLobby').hide();
+  $('#guandanGame').show();
+});
+
+socket.on('state', function (data) {
+  currentState = data;
+  selectedCards.clear();
+  $('#guandanLobby').hide();
+  $('#guandanGame').show();
+  renderState();
+});
+
+socket.on('gameLog', function (data) {
+  var logDiv = $('#gameLog');
+  logDiv.append('<div>' + data.message + '</div>');
+  logDiv.scrollTop(logDiv[0].scrollHeight);
+});
+
+socket.on('actionError', function (data) {
+  alert(data.message || '操作失败。');
+});
+
+function phaseText(phase) {
+  if (phase === 'lobby') return '等待开始';
+  if (phase === 'tribute') return '进贡';
+  if (phase === 'return') return '还贡';
+  if (phase === 'playing') return '出牌';
+  if (phase === 'handOver') return '本副结束';
+  if (phase === 'gameOver') return '整局结束';
+  return phase;
+}
+
+function renderState() {
+  if (!currentState) return;
+  $('#roomInfo').html(
+    '<div class="item">房间：<code>' + escapeHtml(currentState.code) + '</code></div>' +
+    '<div class="item">第 ' + currentState.handNumber + ' 副，级牌：<b>' + escapeHtml(currentState.currentLevel) + '</b></div>' +
+    '<div class="item">队伍 1 等级：' + currentState.teamLevels[0] + '；队伍 2 等级：' + currentState.teamLevels[1] + '</div>'
+  );
+  $('#tableTitle').html('阶段：' + phaseText(currentState.phase) +
+    (currentState.currentTurnName ? ' | 当前：<span style="color:#b58105">' + escapeHtml(currentState.currentTurnName) + '</span>' : ''));
+  renderPhaseInfo();
+  renderPlayers();
+  renderLastPlay();
+  renderFinishOrder();
+  renderHand();
+  renderActions();
+}
+
+function renderPhaseInfo() {
+  var message = '';
+  if (currentState.phase === 'tribute' && currentState.tribute) {
+    message = '请选择一张最大可进贡牌给 ' + escapeHtml(currentState.tribute.to) + '。红心级牌不可进贡。';
+  } else if (currentState.phase === 'return' && currentState.returnCard) {
+    message = '请选择一张 2 到 10 的牌还给 ' + escapeHtml(currentState.returnCard.to) + '。';
+  } else if (currentState.phase === 'playing' && currentState.canAct) {
+    message = currentState.lastPlay ? '请选择能压过上一手的牌，或选择过牌。' : '你领出，可以出任意合法牌型。';
+  } else if (currentState.phase === 'handOver') {
+    message = '本副已结束，可以开始下一副。';
+  } else if (currentState.phase === 'gameOver') {
+    message = '整局已结束。';
+  } else {
+    message = '等待其他玩家操作。';
+  }
+  $('#phaseInfo').text(message);
+}
+
+function renderPlayers() {
+  var html = currentState.players.map(function(player) {
+    var classes = 'ui segment gd-player';
+    if (player.isSelf) classes += ' self';
+    if (currentState.currentTurn === player.seat) classes += ' current';
+    var finish = player.finishedRank ? '<span class="ui red label">第 ' + player.finishedRank + ' 名</span>' : '';
+    var away = player.away ? '<span class="ui gray label">离线</span>' : '';
+    return '<div class="column"><div class="' + classes + '">' +
+      '<h4 class="ui header">' + escapeHtml(player.username) + '</h4>' +
+      '<p>座位 ' + (player.seat + 1) + ' | 队伍 ' + (player.team + 1) + '</p>' +
+      '<p>剩余 ' + player.cardCount + ' 张 ' + finish + ' ' + away + '</p>' +
+      '</div></div>';
+  }).join('');
+  $('#playersGrid').html(html);
+}
+
+function renderLastPlay() {
+  if (!currentState.lastPlay) {
+    $('#lastPlay').html('<div class="ui grey text">当前无人压牌。</div>');
+    return;
+  }
+  $('#lastPlay').html(
+    '<div><b>' + escapeHtml(currentState.lastPlay.username) + '</b>：' +
+    escapeHtml(currentState.lastPlay.title) + '</div>' +
+    '<div>' + currentState.lastPlay.cards.map(function(card) { return renderCard(card, false); }).join('') + '</div>'
+  );
+}
+
+function renderFinishOrder() {
+  if (!currentState.finishOrder.length) {
+    $('#finishOrder').html('<span class="ui grey text">暂无</span>');
+    return;
+  }
+  $('#finishOrder').html(currentState.finishOrder.map(function(item, index) {
+    return '<div class="ui label">' + (index + 1) + '. ' + escapeHtml(item.username) + ' / 队伍 ' + (item.team + 1) + '</div>';
+  }).join(' '));
+}
+
+function renderHand() {
+  $('#myHand').html(currentState.self.hand.map(function(card) {
+    return renderCard(card, true);
+  }).join(''));
+}
+
+function cardColor(card) {
+  if (card.joker) return 'joker';
+  return (card.suit === 'H' || card.suit === 'D') ? 'red' : 'black';
+}
+
+function cardDisabled(card) {
+  if (currentState.phase === 'tribute' && currentState.tribute) {
+    return currentState.tribute.eligible.indexOf(card.id) === -1;
+  }
+  if (currentState.phase === 'return' && currentState.returnCard) {
+    return currentState.returnCard.eligible.indexOf(card.id) === -1;
+  }
+  return currentState.self.finishedRank || currentState.phase !== 'playing' || !currentState.canAct;
+}
+
+function renderCard(card, selectable) {
+  var disabled = selectable && cardDisabled(card);
+  var selected = selectedCards.has(card.id);
+  var onclick = selectable && !disabled ? ' onclick="toggleCard(\'' + card.id + '\')"' : '';
+  return '<div class="gd-card ' + cardColor(card) + (selected ? ' selected' : '') + (disabled ? ' disabled' : '') + '"' + onclick + '>' +
+    '<div class="gd-card-rank">' + escapeHtml(card.label) + '</div>' +
+    '<div class="gd-card-suit">' + escapeHtml(card.suitLabel || '') + '</div>' +
+    '</div>';
+}
+
+function toggleCard(cardId) {
+  if (currentState.phase === 'tribute' || currentState.phase === 'return') {
+    selectedCards.clear();
+    selectedCards.add(cardId);
+  } else if (selectedCards.has(cardId)) {
+    selectedCards.delete(cardId);
+  } else {
+    selectedCards.add(cardId);
+  }
+  renderHand();
+  renderActions();
+}
+
+function selectedIds() {
+  return Array.from(selectedCards);
+}
+
+function renderActions() {
+  var html = '';
+  if (currentState.phase === 'tribute' && currentState.tribute) {
+    html += '<button class="ui red button" onclick="selectTribute()">确认进贡</button>';
+  } else if (currentState.phase === 'return' && currentState.returnCard) {
+    html += '<button class="ui orange button" onclick="selectReturnCard()">确认还贡</button>';
+  } else if (currentState.phase === 'playing' && currentState.canAct && !currentState.self.finishedRank) {
+    html += '<button class="ui green button" onclick="playSelected()">出牌</button>';
+    if (currentState.lastPlay) html += '<button class="ui button" onclick="passTurn()">过牌</button>';
+  } else if (currentState.phase === 'handOver') {
+    html += '<button class="ui primary button" onclick="startNextHand()">开始下一副</button>';
+  }
+  html += '<button class="ui black button" onclick="exitGame()">离开</button>';
+  $('#actionArea').html(html);
+}
+
+function playSelected() {
+  socket.emit('playCards', { cardIds: selectedIds() });
+}
+
+function passTurn() {
+  socket.emit('pass', {});
+}
+
+function selectTribute() {
+  var ids = selectedIds();
+  if (ids.length !== 1) return alert('请选择一张进贡牌。');
+  socket.emit('selectTribute', { cardId: ids[0] });
+}
+
+function selectReturnCard() {
+  var ids = selectedIds();
+  if (ids.length !== 1) return alert('请选择一张还贡牌。');
+  socket.emit('selectReturn', { cardId: ids[0] });
+}
+
+function startNextHand() {
+  socket.emit('startNextHand', {});
+}
+
+function exitGame() {
+  if (confirm('确定离开当前房间吗？')) {
+    socket.emit('playerExit', {});
+    setTimeout(function() { window.location.reload(); }, 300);
+  }
+}
+</script>
+
+<% include footer %>

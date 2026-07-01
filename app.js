@@ -152,8 +152,10 @@ global.syzoj = {
     this.loadModules();
     
     const { initializePoker } = require('./modules/poker_socket');
+    const { initializeGuandan } = require('./modules/guandan_socket');
     const io = require('socket.io')(app.server);
     initializePoker(io);
+    initializeGuandan(io);
     syzoj.socketIO = io;
 
     if (!module.parent) {
