@@ -652,6 +652,85 @@ app.post('/admin/teachers', async (req, res) => {
   }
 });
 
+function normalizeIdList(value) {
+  if (!value) return [];
+  if (!Array.isArray(value)) value = [value];
+  return value.map(id => parseInt(id)).filter(id => !isNaN(id));
+}
+
+app.get('/admin/create_user', async (req, res) => {
+  try {
+    if (!res.locals.user || !res.locals.user.is_admin) throw new ErrorMessage('您没有权限进行此操作。');
+
+    const groups = await Group.find({ order: { group_id: 'ASC' } });
+    const teachers = await Teacher.find({ order: { name: 'ASC' } });
+
+    res.render('admin_create_user', {
+      groups,
+      teachers,
+      error_info: null
+    });
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
+app.post('/admin/create_user', async (req, res) => {
+  try {
+    if (!res.locals.user || !res.locals.user.is_admin) throw new ErrorMessage('您没有权限进行此操作。');
+
+    const username = (req.body.username || '').trim();
+    if (!syzoj.utils.isValidUsername(username)) throw new ErrorMessage('用户名不合法。');
+    if (await User.fromName(username)) throw new ErrorMessage('用户名已被占用。');
+
+    const email = (req.body.email || '').trim();
+    if (email && await User.findOne({ where: { email } })) throw new ErrorMessage('邮件地址已被占用。');
+
+    // Because the client hashes the password as md5(password + "syzoj2_xxx"),
+    // an empty password always hashes to this fixed value.
+    const emptyPasswordMd5 = '59cb65ba6f9ad18de0dcd12d5ae11bd2';
+    if (!req.body.password || req.body.password === emptyPasswordMd5) throw new ErrorMessage('密码不能为空。');
+
+    const userType = ['student', 'lecturer', 'admin'].includes(req.body.user_type) ? req.body.user_type : 'student';
+
+    const user = await User.create({
+      username,
+      password: req.body.password,
+      email,
+      realname: (req.body.realname || '').trim(),
+      school: (req.body.school || '').trim(),
+      seat: (req.body.seat || '').trim(),
+      sex: parseInt(req.body.sex) || 0,
+      user_type: userType,
+      is_show: syzoj.config.default.user.show,
+      rating: syzoj.config.default.user.rating,
+      register_time: parseInt((new Date()).getTime() / 1000),
+      must_change_password: true
+    });
+    await user.save();
+
+    let privileges = req.body.privileges;
+    if (!privileges) privileges = [];
+    else if (!Array.isArray(privileges)) privileges = [privileges];
+    await user.setPrivileges(privileges);
+
+    await user.setGroup(normalizeIdList(req.body.groups));
+    if (userType === 'student') {
+      await user.setTeacher(normalizeIdList(req.body.teachers));
+    }
+
+    res.redirect(syzoj.utils.makeUrl(['user', user.id, 'edit']));
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
 app.get('/admin/raw', async (req, res) => {
   try {
     if (!res.locals.user || !res.locals.user.is_admin) throw new ErrorMessage('您没有权限进行此操作。');

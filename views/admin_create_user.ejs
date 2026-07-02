@@ -1,0 +1,142 @@
+<%
+this.adminPage = 'create_user';
+%>
+<% include admin_header %>
+<div class="ui <% if (error_info === '') { %>success<% } else { %>error<% } %> message" id="error" <% if (error_info === null) { %>hidden<% } %>>
+  <% if (error_info !== null) {
+      if (error_info === '') error_info = '创建成功。';
+  %>
+    <p id="error_info"><%= error_info %></p>
+  <% } %>
+</div>
+<form id="form" action="<%= syzoj.utils.makeUrl(['admin', 'create_user']) %>" method="post" onsubmit="return check()">
+  <div class="ui form">
+    <div class="field">
+      <label for="username">用户名</label>
+      <input type="text" id="username" name="username">
+    </div>
+    <div class="field">
+      <label for="password">密码</label>
+      <input type="password" id="password" name="password">
+    </div>
+    <div class="field">
+      <label for="realname">姓名</label>
+      <input type="text" id="realname" name="realname">
+    </div>
+    <div class="field">
+      <label for="school">学校</label>
+      <input type="text" id="school" name="school">
+    </div>
+    <div class="field">
+      <label for="seat">座位</label>
+      <input type="text" id="seat" name="seat">
+    </div>
+    <div class="field">
+      <label for="sex">性别</label>
+      <select class="ui dropdown" name="sex">
+        <option value="0" selected>其它</option>
+        <option value="1">男</option>
+        <option value="-1">女</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="email">Email</label>
+      <input class="font-content" type="email" id="email" name="email">
+    </div>
+    <div class="field">
+      <label for="user_type">账号类型</label>
+      <select class="ui dropdown" id="user_type" name="user_type">
+        <option value="student" selected>学生</option>
+        <option value="lecturer">讲师</option>
+        <option value="admin">管理员</option>
+      </select>
+    </div>
+    <div class="inline field">
+      <label class="ui header">权限</label>
+      <div class="ui toggle checkbox checkbox_privilege" data-name="manage_problem" style="margin-right: 20px; ">
+        <input type="checkbox">
+        <label>管理题目</label>
+      </div>
+      <div class="ui toggle checkbox checkbox_privilege" data-name="manage_problem_tag" style="margin-right: 20px; ">
+        <input type="checkbox">
+        <label>管理题目标签</label>
+      </div>
+      <div class="ui toggle checkbox checkbox_privilege" data-name="manage_user" style="margin-right: 20px; ">
+        <input type="checkbox">
+        <label>管理用户</label>
+      </div>
+      <div class="ui toggle checkbox checkbox_privilege" data-name="manage_contest">
+        <input type="checkbox">
+        <label>管理比赛</label>
+      </div>
+    </div>
+    <div class="field">
+      <label>班级</label>
+      <select class="ui fluid search dropdown" multiple="" name="groups">
+        <% for (let group of groups) { %>
+          <option value="<%= group.group_id %>"><%= group.group_name %></option>
+        <% } %>
+      </select>
+    </div>
+    <div class="field" id="teacher_field">
+      <label>教师</label>
+      <select class="ui fluid search dropdown" multiple="" name="teachers">
+        <% for (let teacher of teachers) { %>
+          <option value="<%= teacher.id %>"><%= teacher.name %><% if (teacher.email) { %>（<%= teacher.email %>）<% } %></option>
+        <% } %>
+      </select>
+    </div>
+    <div style="text-align: center; margin-top: 30px; ">
+      <button id="submit_button" type="submit" class="ui blue labeled icon button"><i class="ui icon add"></i>创建</button>
+    </div>
+  </div>
+</form>
+
+<script>
+var bakDefine = define;
+define = undefined;
+</script>
+<script src="<%- lib('blueimp-md5/2.10.0/js/md5.min.js') %>"></script>
+<script>
+define = bakDefine;
+</script>
+<script type="text/javascript">
+function check() {
+  var password = $('#password');
+  if (!password.val()) {
+    $('#error').removeClass('success').addClass('error');
+    $('#error_info').html('密码不能为空。');
+    $('#error').show();
+    return false;
+  }
+  password.val(md5(password.val() + 'syzoj2_xxx'));
+
+  $('.checkbox_privilege').each(function () {
+    if ($(this).checkbox('is checked')) {
+      var name = $(this).data('name');
+      var elem = document.createElement('input');
+      elem.type = 'hidden';
+      elem.value = name;
+      elem.name = 'privileges';
+      document.getElementById('form').appendChild(elem);
+    }
+  });
+
+  return true;
+}
+
+function toggleTeacherField() {
+  if ($('#user_type').val() === 'student') {
+    $('#teacher_field').show();
+  } else {
+    $('#teacher_field').hide();
+  }
+}
+
+$(function () {
+  $('.ui.dropdown:not(.simple)').dropdown();
+  toggleTeacherField();
+  $('#user_type').on('change', toggleTeacherField);
+});
+</script>
+<% include admin_footer %>
