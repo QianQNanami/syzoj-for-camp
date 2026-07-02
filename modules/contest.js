@@ -465,6 +465,39 @@ app.get('/contest/:id/export_all', async (req, res) => {
   }
 });
 
+app.post('/contest/:id/publicize_problems', async (req, res) => {
+  try {
+    const contest_id = parseInt(req.params.id);
+    const contest = await Contest.findById(contest_id);
+    const curUser = res.locals.user;
+
+    if (!contest) throw new ErrorMessage('无此比赛。');
+    contest.admins = contest.admins || '';
+    if (!await contest.isSupervisior(curUser)) throw new ErrorMessage('您没有权限进行此操作。');
+    if (!contest.isEnded()) throw new ErrorMessage('比赛尚未结束，不能公开题目。');
+
+    const problems_id = await contest.getProblems();
+    for (const id of problems_id) {
+      const problem = await Problem.findById(id);
+      if (!problem || problem.is_public) continue;
+
+      problem.is_public = true;
+      problem.publicizer_id = curUser.id;
+      problem.publicize_time = new Date();
+      await problem.save();
+
+      JudgeState.query('UPDATE `judge_state` SET `is_public` = 1 WHERE `problem_id` = ' + id);
+    }
+
+    res.redirect(syzoj.utils.makeUrl(['contest', contest.id]));
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
 app.get('/contest/:id', async (req, res) => {
   try {
     const curUser = res.locals.user;
