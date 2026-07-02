@@ -104,16 +104,7 @@
         <label>教师</label>
         <select class="ui fluid search dropdown" multiple="" name="teachers">
           <% for (let teacher of allTeachers) { %>
-            <option value="<%= teacher.id %>" <% if (userTeachers.includes(teacher.id)) { %>selected<% } %>><%= teacher.username %><% if (teacher.realname) { %>（<%= teacher.realname %>）<% } %></option>
-          <% } %>
-        </select>
-      </div>
-      <% } else if (edited_user.user_type === 'teacher') { %>
-      <div class="field">
-        <label>学生</label>
-        <select class="ui fluid search dropdown" multiple="" name="students">
-          <% for (let student of allStudents) { %>
-            <option value="<%= student.id %>" <% if (userStudents.includes(student.id)) { %>selected<% } %>><%= student.username %><% if (student.realname) { %>（<%= student.realname %>）<% } %></option>
+            <option value="<%= teacher.id %>" <% if (userTeachers.includes(teacher.id)) { %>selected<% } %>><%= teacher.name %><% if (teacher.email) { %>（<%= teacher.email %>）<% } %></option>
           <% } %>
         </select>
       </div>

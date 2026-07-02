@@ -1,0 +1,82 @@
+<%
+this.adminPage = 'teachers';
+%>
+<% include admin_header %>
+<table class="ui center aligned celled table">
+<thead>
+  <tr>
+    <th>编号</th>
+    <th>姓名</th>
+    <th>邮箱</th>
+    <th width="50px">删除</th>
+  </tr>
+</thead>
+
+<tbody id="teacher_rows">
+  <% for (let i = 0; i < teachers.length; i++) { %>
+    <tr data-id="<%= teachers[i].id %>">
+      <td><%= teachers[i].id %></td>
+      <td><input type="text" class="teacher_name" value="<%= teachers[i].name %>"></td>
+      <td><input type="text" class="teacher_email" value="<%= teachers[i].email %>"></td>
+      <td>
+        <a class="remove_teacher_row" style="color: #000; " href="#"><i class="remove icon"></i></a>
+      </td>
+    </tr>
+  <% } %>
+</tbody>
+</table>
+
+<div class="ui form">
+  <div class="two fields">
+    <div class="field">
+      <label>姓名</label>
+      <input type="text" id="add_name">
+    </div>
+    <div class="field">
+      <label>邮箱</label>
+      <input type="text" id="add_email">
+    </div>
+  </div>
+  <div style="text-align: center;">
+    <div id="add_button" class="ui labeled icon button"><i class="ui add icon"></i>添加一行</div>
+    <div id="save_button" class="ui submit blue labeled icon button"><i class="ui save icon"></i>保存</div>
+  </div>
+</div>
+
+<form method="post" id="submit_form">
+  <input type="hidden" name="data" id="submit_data">
+</form>
+
+<script>
+$('#teacher_rows').on('click', '.remove_teacher_row', function (e) {
+  e.preventDefault();
+  $(this).closest('tr').remove();
+});
+
+$('#add_button').click(function () {
+  var name = $('#add_name').val();
+  var email = $('#add_email').val();
+  if (!name || !email) return;
+  var row = $('<tr data-id=""><td>（新增）</td><td><input type="text" class="teacher_name"></td><td><input type="text" class="teacher_email"></td><td><a class="remove_teacher_row" style="color: #000; " href="#"><i class="remove icon"></i></a></td></tr>');
+  row.find('.teacher_name').val(name);
+  row.find('.teacher_email').val(email);
+  $('#teacher_rows').append(row);
+  $('#add_name').val('');
+  $('#add_email').val('');
+});
+
+$('#save_button').click(function () {
+  var teachers = [];
+  $('#teacher_rows tr').each(function () {
+    var idAttr = $(this).attr('data-id');
+    teachers.push({
+      id: idAttr ? parseInt(idAttr) : null,
+      name: $(this).find('.teacher_name').val(),
+      email: $(this).find('.teacher_email').val()
+    });
+  });
+  $('#submit_data').val(JSON.stringify(teachers));
+  $('#submit_form').submit();
+});
+</script>
+<% include admin_footer %>

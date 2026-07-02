@@ -1,4 +1,5 @@
 let User = syzoj.model('user');
+let Teacher = syzoj.model('teacher');
 const RatingCalculation = syzoj.model('rating_calculation');
 const RatingHistory = syzoj.model('rating_history');
 const Contest = syzoj.model('contest');
@@ -10,23 +11,11 @@ function normalizeIdList(value) {
   return value.map(id => parseInt(id)).filter(id => !isNaN(id));
 }
 
-async function findUsersByIds(ids) {
-  ids = normalizeIdList(ids);
-  if (!ids.length) return [];
-
-  return await User.createQueryBuilder('users')
-    .where('users.id IN (:...ids)', { ids: ids })
-    .orderBy('users.username', 'ASC')
-    .getMany();
-}
-
 async function getUserEditData(editedUser, currentUser) {
   let allGroups = null;
   let userGroups = [];
   let allTeachers = [];
-  let allStudents = [];
   let userTeachers = [];
-  let userStudents = [];
 
   if (editedUser) {
     userGroups = (await editedUser.getGroup()).map(g => g.group_id);
@@ -34,19 +23,12 @@ async function getUserEditData(editedUser, currentUser) {
 
   if (editedUser && currentUser && currentUser.is_admin) {
     allGroups = await syzoj.model('group').find();
-    allTeachers = await User.find({
-      where: { user_type: 'teacher' },
-      order: { username: 'ASC' }
-    });
-    allStudents = await User.find({
-      where: { user_type: 'student' },
-      order: { username: 'ASC' }
+    allTeachers = await Teacher.find({
+      order: { name: 'ASC' }
     });
 
     if (editedUser.user_type === 'student') {
       userTeachers = (await editedUser.getTeacher()).map(x => x.teacher_id);
-    } else if (editedUser.user_type === 'teacher') {
-      userStudents = (await editedUser.getStudents()).map(x => x.user_id);
     }
   }
 
@@ -54,9 +36,7 @@ async function getUserEditData(editedUser, currentUser) {
     allGroups,
     userGroups,
     allTeachers,
-    allStudents,
-    userTeachers,
-    userStudents
+    userTeachers
   };
 }
 
@@ -169,15 +149,10 @@ app.get('/user/:id', async (req, res) => {
     }
 
     let teachers = [];
-    let students = [];
-    if (user.allowedEdit) {
-      if (user.user_type === 'student') {
-        let userTeachers = await user.getTeacher();
-        teachers = await findUsersByIds(userTeachers.map(x => x.teacher_id));
-      } else if (user.user_type === 'teacher') {
-        let userStudents = await user.getStudents();
-        students = await findUsersByIds(userStudents.map(x => x.user_id));
-      }
+    if (user.allowedEdit && user.user_type === 'student') {
+      let userTeachers = await user.getTeacher();
+      teachers = (await userTeachers.mapAsync(async x => await Teacher.findById(x.teacher_id))).filter(x => x);
+      teachers.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
     }
 
     const ratingHistoryValues = await RatingHistory.find({
@@ -218,8 +193,7 @@ app.get('/user/:id', async (req, res) => {
       statistics: statistics,
       ratingHistories: ratingHistories,
       groupNames: groupNames,
-      teachers: teachers,
-      students: students
+      teachers: teachers
     });
   } catch (e) {
     syzoj.log(e);
@@ -303,8 +277,6 @@ app.post('/user/:id/edit', async (req, res) => {
 
       if (user.user_type === 'student') {
         await user.setTeacher(normalizeIdList(req.body.teachers));
-      } else if (user.user_type === 'teacher') {
-        await user.setStudents(normalizeIdList(req.body.students));
       }
     }
 

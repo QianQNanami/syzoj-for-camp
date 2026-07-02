@@ -5,6 +5,7 @@ let Problem = syzoj.model('problem');
 let JudgeState = syzoj.model('judge_state');
 let User = syzoj.model('user');
 let UserTeacher = syzoj.model('user-teacher');
+let Teacher = syzoj.model('teacher');
 
 const jwt = require('jsonwebtoken');
 const Email = require('../libs/email');
@@ -111,7 +112,7 @@ async function buildContestScoreData(contest) {
 function buildTeacherReportBody(contest, teacher, students, scoreData) {
   const lines = [];
   lines.push(`比赛标题：${contest.title}`);
-  lines.push(`教师：${teacher.realname || teacher.username}`);
+  lines.push(`教师：${teacher.name}`);
   lines.push(`发送时间：${syzoj.utils.formatDate(syzoj.utils.getCurrentDate())}`);
   lines.push('');
 
@@ -169,8 +170,8 @@ async function buildTeacherReports(contest) {
 
   const reports = [];
   for (let teacherId of Object.keys(teacherStudents)) {
-    const teacher = await User.findById(parseInt(teacherId));
-    if (!teacher || teacher.user_type !== 'teacher') continue;
+    const teacher = await Teacher.findById(parseInt(teacherId));
+    if (!teacher) continue;
 
     const students = [];
     for (let studentId of teacherStudents[teacherId]) {
@@ -205,7 +206,7 @@ async function runContestEmailTask(taskId) {
     task.total = reports.length;
 
     for (const report of reports) {
-      const teacherName = report.teacher.realname || report.teacher.username || `#${report.teacher.id}`;
+      const teacherName = report.teacher.name || `#${report.teacher.id}`;
       if (!report.teacher.email) {
         task.skipped++;
         task.logs.push({ teacher: teacherName, email: '', status: 'skipped', message: '教师邮箱为空。' });

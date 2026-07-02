@@ -71,22 +71,7 @@
                                                     无
                                                 <% } else { %>
                                                     <% for (let i = 0; i < teachers.length; i++) { %>
-                                                        <% if (i > 0) { %>, <% } %><a href="<%= syzoj.utils.makeUrl(['user', teachers[i].id]) %>"><%= teachers[i].username %><% if (teachers[i].realname) { %>（<%= teachers[i].realname %>）<% } %></a>
-                                                    <% } %>
-                                                <% } %>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <% } else if (show_user.allowedEdit && show_user.user_type === 'teacher') { %>
-                                    <div class="row">
-                                        <div class="column">
-                                            <h4 class="ui top attached block header">学生</h4>
-                                            <div class="ui bottom attached segment" class="font-content">
-                                                <% if (!students.length) { %>
-                                                    无
-                                                <% } else { %>
-                                                    <% for (let i = 0; i < students.length; i++) { %>
-                                                        <% if (i > 0) { %>, <% } %><a href="<%= syzoj.utils.makeUrl(['user', students[i].id]) %>"><%= students[i].username %><% if (students[i].realname) { %>（<%= students[i].realname %>）<% } %></a>
+                                                        <% if (i > 0) { %>, <% } %><%= teachers[i].name %><% if (teachers[i].email) { %>（<%= teachers[i].email %>）<% } %>
                                                     <% } %>
                                                 <% } %>
                                             </div>

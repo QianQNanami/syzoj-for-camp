@@ -5,6 +5,7 @@ let Article = syzoj.model('article');
 let Contest = syzoj.model('contest');
 let User = syzoj.model('user');
 let Group = syzoj.model('group');
+let Teacher = syzoj.model('teacher');
 let UserPrivilege = syzoj.model('user_privilege');
 const RatingCalculation = syzoj.model('rating_calculation');
 const RatingHistory = syzoj.model('rating_history');
@@ -578,6 +579,74 @@ app.post('/admin/groups', async (req, res) => {
     }
 
     res.redirect(syzoj.utils.makeUrl(['admin', 'groups']));
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
+app.get('/admin/teachers', async (req, res) => {
+  try {
+    if (!res.locals.user || !res.locals.user.is_admin) throw new ErrorMessage('您没有权限进行此操作。');
+
+    const teachers = await Teacher.find({ order: { name: 'ASC' } });
+
+    res.render('admin_teachers', {
+      teachers: teachers
+    });
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
+app.post('/admin/teachers', async (req, res) => {
+  try {
+    if (!res.locals.user || !res.locals.user.is_admin) throw new ErrorMessage('您没有权限进行此操作。');
+
+    const updatedTeachers = JSON.parse(req.body.data);
+
+    for (const teacherData of updatedTeachers) {
+      teacherData.id = teacherData.id ? parseInt(teacherData.id) : null;
+      if (teacherData.id != null && isNaN(teacherData.id)) {
+        throw new ErrorMessage('教师ID必须为数字');
+      }
+      if (!teacherData.name) {
+        throw new ErrorMessage('教师姓名不能为空');
+      }
+      if (!teacherData.email) {
+        throw new ErrorMessage('教师邮箱不能为空');
+      }
+    }
+
+    const existingTeachers = await Teacher.find();
+
+    for (const existingTeacher of existingTeachers) {
+      if (!updatedTeachers.find(t => t.id === existingTeacher.id)) {
+        await Teacher.deleteById(existingTeacher.id);
+        await existingTeacher.destroy();
+      }
+    }
+
+    for (const teacherData of updatedTeachers) {
+      let teacher = teacherData.id != null ? await Teacher.findById(teacherData.id) : null;
+      if (!teacher) {
+        teacher = await Teacher.create({
+          name: teacherData.name,
+          email: teacherData.email
+        });
+      } else {
+        teacher.name = teacherData.name;
+        teacher.email = teacherData.email;
+      }
+      await teacher.save();
+    }
+
+    res.redirect(syzoj.utils.makeUrl(['admin', 'teachers']));
   } catch (e) {
     syzoj.log(e);
     res.render('error', {
