@@ -61,7 +61,7 @@
       <label for="information">个性签名</label>
         <textarea class="markdown-edit" rows="5" id="information" name="information"><%= edited_user.information %></textarea>
       </div>
-      <% if (edited_user.user_type === 'student') { %>
+      <% if (edited_user.user_type === 'student' && !user.allowedManage) { %>
       <div class="field">
         <label class="ui header">密码</label>
         <p>学生账号不支持自行修改密码。</p>
