@@ -16,8 +16,8 @@ this.adminPage = 'teachers';
   <% for (let i = 0; i < teachers.length; i++) { %>
     <tr data-id="<%= teachers[i].id %>">
       <td><%= teachers[i].id %></td>
-      <td><input type="text" class="teacher_name" value="<%= teachers[i].name %>"></td>
-      <td><input type="text" class="teacher_email" value="<%= teachers[i].email %>"></td>
+      <td><div class="ui fluid input"><input type="text" class="teacher_name" value="<%= teachers[i].name %>"></div></td>
+      <td><div class="ui fluid input"><input type="text" class="teacher_email" value="<%= teachers[i].email %>"></div></td>
       <td>
         <a class="remove_teacher_row" style="color: #000; " href="#"><i class="remove icon"></i></a>
       </td>
@@ -57,7 +57,7 @@ $('#add_button').click(function () {
   var name = $('#add_name').val();
   var email = $('#add_email').val();
   if (!name) return;
-  var row = $('<tr data-id=""><td>（新增）</td><td><input type="text" class="teacher_name"></td><td><input type="text" class="teacher_email"></td><td><a class="remove_teacher_row" style="color: #000; " href="#"><i class="remove icon"></i></a></td></tr>');
+  var row = $('<tr data-id=""><td>（新增）</td><td><div class="ui fluid input"><input type="text" class="teacher_name"></div></td><td><div class="ui fluid input"><input type="text" class="teacher_email"></div></td><td><a class="remove_teacher_row" style="color: #000; " href="#"><i class="remove icon"></i></a></td></tr>');
   row.find('.teacher_name').val(name);
   row.find('.teacher_email').val(email);
   $('#teacher_rows').append(row);
