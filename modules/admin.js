@@ -528,7 +528,7 @@ app.get('/admin/groups', async (req, res) => {
   try {
     if (!res.locals.user || !res.locals.user.is_admin) throw new ErrorMessage('您没有权限进行此操作。');
 
-    const groups = await Group.find();
+    const groups = await Group.find({ order: { group_id: 'ASC' } });
 
     res.render('admin_groups', {
       groups: groups
@@ -591,7 +591,7 @@ app.get('/admin/teachers', async (req, res) => {
   try {
     if (!res.locals.user || !res.locals.user.is_admin) throw new ErrorMessage('您没有权限进行此操作。');
 
-    const teachers = await Teacher.find({ order: { name: 'ASC' } });
+    const teachers = await Teacher.find({ order: { id: 'ASC' } });
 
     res.render('admin_teachers', {
       teachers: teachers
