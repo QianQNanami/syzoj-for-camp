@@ -56,7 +56,7 @@ $('#teacher_rows').on('click', '.remove_teacher_row', function (e) {
 $('#add_button').click(function () {
   var name = $('#add_name').val();
   var email = $('#add_email').val();
-  if (!name || !email) return;
+  if (!name) return;
   var row = $('<tr data-id=""><td>（新增）</td><td><input type="text" class="teacher_name"></td><td><input type="text" class="teacher_email"></td><td><a class="remove_teacher_row" style="color: #000; " href="#"><i class="remove icon"></i></a></td></tr>');
   row.find('.teacher_name').val(name);
   row.find('.teacher_email').val(email);

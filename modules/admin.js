@@ -618,9 +618,6 @@ app.post('/admin/teachers', async (req, res) => {
       if (!teacherData.name) {
         throw new ErrorMessage('教师姓名不能为空');
       }
-      if (!teacherData.email) {
-        throw new ErrorMessage('教师邮箱不能为空');
-      }
     }
 
     const existingTeachers = await Teacher.find();
@@ -637,11 +634,11 @@ app.post('/admin/teachers', async (req, res) => {
       if (!teacher) {
         teacher = await Teacher.create({
           name: teacherData.name,
-          email: teacherData.email
+          email: teacherData.email || ''
         });
       } else {
         teacher.name = teacherData.name;
-        teacher.email = teacherData.email;
+        teacher.email = teacherData.email || '';
       }
       await teacher.save();
     }
