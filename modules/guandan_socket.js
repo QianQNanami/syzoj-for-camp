@@ -122,7 +122,8 @@ function initializeGuandan(io) {
 
     socket.on('startNextHand', () => {
       const game = findRoomBySocket(socket.id);
-      if (game && (game.phase === 'handOver')) game.startNewHand();
+      if (!game) return;
+      emitActionResult(socket, game.confirmNextHand(socket.id));
     });
 
     socket.on('playerExit', () => {

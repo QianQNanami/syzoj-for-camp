@@ -4,6 +4,7 @@ const SUITS = ['S', 'H', 'D', 'C'];
 const SUIT_LABELS = { S: '♠', H: '♥', D: '♦', C: '♣', J: '' };
 const LEVEL_ADVANCE = { double: 3, oneThree: 2, oneFour: 1 };
 const RATING_DELTA = { double: 200, oneThree: 100, oneFour: 50 };
+const AWAY_AUTO_ACTION_MS = 20000;
 
 function nextRank(rank, steps) {
   let idx = BASE_RANKS.indexOf(rank);
@@ -332,6 +333,9 @@ class GuandanGame {
     this.pendingTributes = [];
     this.pendingReturns = [];
     this.tributeRecipients = [];
+    this.lastTributeResults = {};
+    this.handOverReady = new Set();
+    this.awayTimer = null;
     this.logs = [];
     this.roundInProgress = false;
     this.gameOver = false;
@@ -392,6 +396,7 @@ class GuandanGame {
 
   startGame() {
     if (this.players.length !== 4 || this.phase !== 'lobby') return false;
+    this.firstLead = Math.floor(Math.random() * 4);
     this.emitPlayers('gameBegin', { code: this.code });
     this.startNewHand();
     return true;
@@ -407,6 +412,8 @@ class GuandanGame {
     this.pendingTributes = [];
     this.pendingReturns = [];
     this.tributeRecipients = [];
+    this.lastTributeResults = {};
+    this.handOverReady = new Set();
     this.roundInProgress = true;
     for (const player of this.players) {
       player.hand = [];
@@ -477,9 +484,13 @@ class GuandanGame {
   }
 
   selectTribute(socketId, cardId) {
-    if (this.phase !== 'tribute') return { ok: false, message: 'Not in tribute phase.' };
     const player = this.findPlayerBySocket(socketId);
     if (!player) return { ok: false, message: 'Unknown player.' };
+    return this.selectTributeForPlayer(player, cardId);
+  }
+
+  selectTributeForPlayer(player, cardId) {
+    if (this.phase !== 'tribute') return { ok: false, message: 'Not in tribute phase.' };
     const entry = this.pendingTributes.find((item) => item.from === player.seat && !item.cardId);
     if (!entry) return { ok: false, message: 'No tribute required from you.' };
     const card = player.hand.find((c) => c.id === cardId);
@@ -517,6 +528,7 @@ class GuandanGame {
       const card = this.removeCard(from, tribute.cardId);
       to.hand.push(card);
       this.pendingReturns.push({ from: tribute.to, to: tribute.from, cardId: null });
+      this.lastTributeResults[tribute.from] = { toUsername: to.username, cardText: this.cardText(card) };
       this.broadcastLog(`${from.username} tributed ${this.cardText(card)} to ${to.username}.`);
     }
     for (const player of this.players) GuandanRules.sortCards(player.hand, this.currentLevel);
@@ -525,9 +537,13 @@ class GuandanGame {
   }
 
   selectReturn(socketId, cardId) {
-    if (this.phase !== 'return') return { ok: false, message: 'Not in return phase.' };
     const player = this.findPlayerBySocket(socketId);
     if (!player) return { ok: false, message: 'Unknown player.' };
+    return this.selectReturnForPlayer(player, cardId);
+  }
+
+  selectReturnForPlayer(player, cardId) {
+    if (this.phase !== 'return') return { ok: false, message: 'Not in return phase.' };
     const entry = this.pendingReturns.find((item) => item.from === player.seat && !item.cardId);
     if (!entry) return { ok: false, message: 'No return required from you.' };
     const card = player.hand.find((c) => c.id === cardId);
@@ -550,14 +566,19 @@ class GuandanGame {
     }
     for (const player of this.players) GuandanRules.sortCards(player.hand, this.currentLevel);
     this.phase = 'playing';
-    this.currentTurn = this.pendingTributes[0].from;
+    // Whoever received the smaller tribute card leads (the sole recipient in the single-tribute case).
+    this.currentTurn = this.tributeRecipients[this.tributeRecipients.length - 1];
     this.broadcastLog(`${this.players[this.currentTurn].username} leads after tribute.`);
   }
 
   playCards(socketId, cardIds) {
-    if (this.phase !== 'playing') return { ok: false, message: 'Not in playing phase.' };
     const player = this.findPlayerBySocket(socketId);
     if (!player) return { ok: false, message: 'Unknown player.' };
+    return this.playCardsForPlayer(player, cardIds);
+  }
+
+  playCardsForPlayer(player, cardIds) {
+    if (this.phase !== 'playing') return { ok: false, message: 'Not in playing phase.' };
     if (player.seat !== this.currentTurn) return { ok: false, message: 'It is not your turn.' };
     if (player.finishedRank) return { ok: false, message: 'You already finished.' };
     if (!Array.isArray(cardIds) || cardIds.length === 0) return { ok: false, message: 'Select at least one card.' };
@@ -604,9 +625,13 @@ class GuandanGame {
   }
 
   pass(socketId) {
-    if (this.phase !== 'playing') return { ok: false, message: 'Not in playing phase.' };
     const player = this.findPlayerBySocket(socketId);
     if (!player) return { ok: false, message: 'Unknown player.' };
+    return this.passForPlayer(player);
+  }
+
+  passForPlayer(player) {
+    if (this.phase !== 'playing') return { ok: false, message: 'Not in playing phase.' };
     if (player.seat !== this.currentTurn) return { ok: false, message: 'It is not your turn.' };
     if (!this.lastPlay) return { ok: false, message: 'You cannot pass while leading.' };
     if (this.lastPlay.player === player.seat) return { ok: false, message: 'You cannot pass your own lead.' };
@@ -630,6 +655,7 @@ class GuandanGame {
 
   nextLeadAfterTrick() {
     const lastSeat = this.lastPlay.player;
+    if (!this.players[lastSeat].finishedRank) return lastSeat;
     const teammate = (lastSeat + 2) % 4;
     if (!this.players[teammate].finishedRank) return teammate;
     return this.nextUnfinishedFrom(lastSeat);
@@ -753,6 +779,88 @@ class GuandanGame {
     for (const player of this.players) {
       if (player.socket) player.socket.emit('state', this.stateFor(player));
     }
+    this.scheduleAwayAutoAction();
+  }
+
+  confirmNextHand(socketId) {
+    const player = this.findPlayerBySocket(socketId);
+    if (!player) return { ok: false, message: 'Unknown player.' };
+    return this.confirmNextHandForPlayer(player);
+  }
+
+  confirmNextHandForPlayer(player) {
+    if (this.phase !== 'handOver') return { ok: false, message: 'Not ready for next hand.' };
+    if (this.handOverReady.has(player.seat)) return { ok: true };
+    this.handOverReady.add(player.seat);
+    this.broadcastLog(`${player.username} is ready for the next hand.`);
+    const requiredSeats = this.players.filter((p) => !p.away);
+    const allReady = requiredSeats.length > 0 && requiredSeats.every((p) => this.handOverReady.has(p.seat));
+    if (allReady) {
+      this.startNewHand();
+    } else {
+      this.rerender();
+    }
+    return { ok: true };
+  }
+
+  // If it's an away player's turn (to play, pass, tribute, return, or confirm the next hand),
+  // act on their behalf after a delay so the other three players are never stuck waiting forever.
+  scheduleAwayAutoAction() {
+    if (this.awayTimer) {
+      clearTimeout(this.awayTimer);
+      this.awayTimer = null;
+    }
+    if (this.gameOver || this.phase === 'lobby' || this.phase === 'gameOver') return;
+
+    let actor = null;
+    if (this.phase === 'playing' && this.currentTurn !== null) {
+      actor = this.players[this.currentTurn];
+    } else if (this.phase === 'tribute') {
+      const entry = this.pendingTributes.find((item) => !item.cardId);
+      if (entry) actor = this.players[entry.from];
+    } else if (this.phase === 'return') {
+      const entry = this.pendingReturns.find((item) => !item.cardId);
+      if (entry) actor = this.players[entry.from];
+    } else if (this.phase === 'handOver') {
+      actor = this.players.find((p) => p.away && !this.handOverReady.has(p.seat)) || null;
+    }
+
+    if (!actor || !actor.away) return;
+    const seat = actor.seat;
+    this.awayTimer = setTimeout(() => this.performAwayAutoAction(seat), AWAY_AUTO_ACTION_MS);
+    if (this.awayTimer.unref) this.awayTimer.unref();
+  }
+
+  performAwayAutoAction(seat) {
+    this.awayTimer = null;
+    const player = this.players[seat];
+    if (!player || !player.away) return;
+
+    if (this.phase === 'playing' && this.currentTurn === seat) {
+      if (this.lastPlay) {
+        this.passForPlayer(player);
+      } else if (player.hand.length) {
+        this.playCardsForPlayer(player, [player.hand[0].id]);
+      }
+    } else if (this.phase === 'tribute') {
+      const entry = this.pendingTributes.find((item) => item.from === seat && !item.cardId);
+      const eligible = entry && player.hand.filter((c) => GuandanRules.isTributeEligible(c, this.currentLevel));
+      if (eligible && eligible.length) {
+        const maxOrder = Math.max(...eligible.map((c) => GuandanRules.rankOrder(c.rank, this.currentLevel)));
+        const pick = eligible.find((c) => GuandanRules.rankOrder(c.rank, this.currentLevel) === maxOrder);
+        this.selectTributeForPlayer(player, pick.id);
+      }
+    } else if (this.phase === 'return') {
+      const entry = this.pendingReturns.find((item) => item.from === seat && !item.cardId);
+      const eligible = entry && player.hand.filter((c) => GuandanRules.isReturnEligible(c));
+      if (eligible && eligible.length) {
+        const minOrder = Math.min(...eligible.map((c) => GuandanRules.rankOrder(c.rank, this.currentLevel)));
+        const pick = eligible.find((c) => GuandanRules.rankOrder(c.rank, this.currentLevel) === minOrder);
+        this.selectReturnForPlayer(player, pick.id);
+      }
+    } else if (this.phase === 'handOver') {
+      this.confirmNextHandForPlayer(player);
+    }
   }
 
   stateFor(viewer) {
@@ -806,6 +914,10 @@ class GuandanGame {
           .filter((card) => GuandanRules.isReturnEligible(card))
           .map((card) => card.id),
       } : null,
+      tributeResult: this.lastTributeResults[viewer.seat] || null,
+      handOverReadyCount: this.phase === 'handOver' ? this.handOverReady.size : 0,
+      handOverRequiredCount: this.phase === 'handOver' ? this.players.filter((p) => !p.away).length : 0,
+      selfReadyForNextHand: this.phase === 'handOver' && this.handOverReady.has(viewer.seat),
       gameOver: this.gameOver,
     };
   }

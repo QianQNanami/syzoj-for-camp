@@ -171,6 +171,8 @@ var currentUser = "<%= user.username %>";
 var currentState = null;
 var selectedCards = new Set();
 var hostedCode = null;
+var handOrder = [];
+var handOrderHandNumber = null;
 
 $(document).ready(function () {
   $('#hostButton').click(function() { $('#hostModal').modal('show'); });
@@ -289,8 +291,14 @@ function renderState() {
     '<div class="item">第 ' + currentState.handNumber + ' 副，级牌：<b>' + escapeHtml(currentState.currentLevel) + '</b></div>' +
     '<div class="item">队伍 1 等级：' + currentState.teamLevels[0] + '；队伍 2 等级：' + currentState.teamLevels[1] + '</div>'
   );
+  var currentPlayerAway = false;
+  if (currentState.currentTurn !== null) {
+    var currentPlayerInfo = currentState.players.filter(function(p) { return p.seat === currentState.currentTurn; })[0];
+    currentPlayerAway = !!(currentPlayerInfo && currentPlayerInfo.away);
+  }
   $('#tableTitle').html('阶段：' + phaseText(currentState.phase) +
-    (currentState.currentTurnName ? ' | 当前：<span style="color:#b58105">' + escapeHtml(currentState.currentTurnName) + '</span>' : ''));
+    (currentState.currentTurnName ? ' | 当前：<span style="color:#b58105">' + escapeHtml(currentState.currentTurnName) + '</span>' : '') +
+    (currentPlayerAway ? ' <span class="ui small grey text">（已离线，超时后将自动处理）</span>' : ''));
   renderPhaseInfo();
   renderPlayers();
   renderLastPlay();
@@ -308,11 +316,15 @@ function renderPhaseInfo() {
   } else if (currentState.phase === 'playing' && currentState.canAct) {
     message = currentState.lastPlay ? '请选择能压过上一手的牌，或选择过牌。' : '你领出，可以出任意合法牌型。';
   } else if (currentState.phase === 'handOver') {
-    message = '本副已结束，可以开始下一副。';
+    message = '本副已结束，' + currentState.handOverReadyCount + '/' + currentState.handOverRequiredCount + ' 人已确认开始下一副。';
   } else if (currentState.phase === 'gameOver') {
     message = '整局已结束。';
   } else {
     message = '等待其他玩家操作。';
+  }
+  if (currentState.tributeResult) {
+    message = '你进贡的 ' + escapeHtml(currentState.tributeResult.cardText) + ' 给了 ' +
+      escapeHtml(currentState.tributeResult.toUsername) + '。' + (message ? ' ' + message : '');
   }
   $('#phaseInfo').text(message);
 }
@@ -355,10 +367,45 @@ function renderFinishOrder() {
   }).join(' '));
 }
 
+function syncHandOrder() {
+  var currentIds = currentState.self.hand.map(function(c) { return c.id; });
+  if (currentState.handNumber !== handOrderHandNumber) {
+    handOrder = currentIds.slice();
+    handOrderHandNumber = currentState.handNumber;
+    return;
+  }
+  var currentSet = {};
+  currentIds.forEach(function(id) { currentSet[id] = true; });
+  handOrder = handOrder.filter(function(id) { return currentSet[id]; });
+  var known = {};
+  handOrder.forEach(function(id) { known[id] = true; });
+  currentIds.forEach(function(id) { if (!known[id]) handOrder.push(id); });
+}
+
 function renderHand() {
-  $('#myHand').html(currentState.self.hand.map(function(card) {
-    return renderCard(card, true);
+  syncHandOrder();
+  var byId = {};
+  currentState.self.hand.forEach(function(c) { byId[c.id] = c; });
+  $('#myHand').html(handOrder.map(function(id) {
+    return renderCard(byId[id], true);
   }).join(''));
+}
+
+function moveSelectedTo(direction) {
+  var ids = selectedIds();
+  if (!ids.length) return alert('请先选中要移动的牌。');
+  var idSet = {};
+  ids.forEach(function(id) { idSet[id] = true; });
+  var moving = handOrder.filter(function(id) { return idSet[id]; });
+  var rest = handOrder.filter(function(id) { return !idSet[id]; });
+  handOrder = direction === 'left' ? moving.concat(rest) : rest.concat(moving);
+  renderHand();
+}
+
+function resetHandOrder() {
+  if (!currentState) return;
+  handOrder = currentState.self.hand.map(function(c) { return c.id; });
+  renderHand();
 }
 
 function cardColor(card) {
@@ -412,8 +459,17 @@ function renderActions() {
   } else if (currentState.phase === 'playing' && currentState.canAct && !currentState.self.finishedRank) {
     html += '<button class="ui green button" onclick="playSelected()">出牌</button>';
     if (currentState.lastPlay) html += '<button class="ui button" onclick="passTurn()">过牌</button>';
+    html += '<button class="ui basic button" onclick="moveSelectedTo(\'left\')">选中牌移到左侧</button>';
+    html += '<button class="ui basic button" onclick="moveSelectedTo(\'right\')">选中牌移到右侧</button>';
   } else if (currentState.phase === 'handOver') {
-    html += '<button class="ui primary button" onclick="startNextHand()">开始下一副</button>';
+    if (currentState.selfReadyForNextHand) {
+      html += '<div class="ui disabled button">已确认，等待其他人（' + currentState.handOverReadyCount + '/' + currentState.handOverRequiredCount + '）</div>';
+    } else {
+      html += '<button class="ui primary button" onclick="startNextHand()">开始下一副</button>';
+    }
+  }
+  if (currentState.self.hand.length) {
+    html += '<button class="ui basic button" onclick="resetHandOrder()">还原手牌</button>';
   }
   html += '<button class="ui black button" onclick="exitGame()">离开</button>';
   $('#actionArea').html(html);
