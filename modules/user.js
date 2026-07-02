@@ -320,10 +320,8 @@ app.post('/user/:id/edit', async (req, res) => {
     }
 
     if (req.body.information !== user.information) {
-      if (res.locals.user && !res.locals.user.is_admin && !await res.locals.user.hasPrivilege('manage_user')) {
-        if (res.locals.user.user_type === 'student' || res.locals.user.user_type === 'teacher') {
-          throw new ErrorMessage('学生或教师用户不能修改个人信息。');
-        }
+      if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_user')) {
+        throw new ErrorMessage('您没有权限修改个性签名。');
       }
       user.information = req.body.information;
     }

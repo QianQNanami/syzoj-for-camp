@@ -59,7 +59,7 @@
       </div>
       <div class="field">
       <label for="information">个性签名</label>
-        <textarea class="markdown-edit" rows="5" id="information" name="information"><%= edited_user.information %></textarea>
+        <textarea class="markdown-edit" rows="5" id="information" name="information"<% if (!user.allowedManage) { %> readonly<% } %>><%= edited_user.information %></textarea>
       </div>
       <% if (edited_user.user_type === 'student' && !user.allowedManage) { %>
       <div class="field">
