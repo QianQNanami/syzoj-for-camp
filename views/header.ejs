@@ -67,6 +67,7 @@
             <% if (user && (user.is_admin || user.user_type === 'admin' || user.user_type === 'lecturer')) { %>
               <a class="item<% if (active.startsWith('poker')) { %> active<% } %>" href="/poker"><i class="heart icon"></i> Poker</a>
               <a class="item<% if (active.startsWith('guandan')) { %> active<% } %>" href="/guandan"><i class="clone outline icon"></i> 掼蛋</a>
+              <a class="item<% if (active.startsWith('gongbang')) { %> active<% } %>" href="/gongbang"><i class="trophy icon"></i> 贡榜</a>
             <% } %>
             <% if (typeof contest !== 'undefined' && contest && contest.id) { %>
               <a id="back_to_contest" class="item" href="<%= syzoj.utils.makeUrl(['contest', contest.id]) %>"><i class="arrow left icon"></i> 返回比赛</a>

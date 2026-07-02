@@ -48,11 +48,44 @@ app.get('/ranklist', async (req, res) => {
     if (!['ac_num', 'rating', 'id', 'username'].includes(sort) || !['asc', 'desc'].includes(order)) {
       throw new ErrorMessage('错误的排序参数。');
     }
-    let paginate = syzoj.utils.paginate(await User.countForPagination({ is_show: true }), req.query.page, syzoj.config.page.ranklist);
-    let ranklist = await User.queryPage(paginate, { is_show: true }, { [sort]: order.toUpperCase() });
+    const where = { is_show: true, user_type: 'student' };
+    let paginate = syzoj.utils.paginate(await User.countForPagination(where), req.query.page, syzoj.config.page.ranklist);
+    let ranklist = await User.queryPage(paginate, where, { [sort]: order.toUpperCase() });
     await ranklist.forEachAsync(async x => x.renderInformation());
 
     res.render('ranklist', {
+      ranklist: ranklist,
+      paginate: paginate,
+      curSort: sort,
+      curOrder: order === 'asc'
+    });
+  } catch (e) {
+    syzoj.log(e);
+    res.render('error', {
+      err: e
+    });
+  }
+});
+
+// 贡榜：仅登录的非学生用户可见，只展示 lecturer 用户的排名
+app.get('/gongbang', async (req, res) => {
+  try {
+    if (!res.locals.user || res.locals.user.user_type === 'student') {
+      throw new ErrorMessage('您没有权限查看此页面。');
+    }
+
+    const sort = req.query.sort || syzoj.config.sorting.ranklist.field;
+    const order = req.query.order || syzoj.config.sorting.ranklist.order;
+    if (!['ac_num', 'rating', 'id', 'username'].includes(sort) || !['asc', 'desc'].includes(order)) {
+      throw new ErrorMessage('错误的排序参数。');
+    }
+
+    const where = { is_show: true, user_type: 'lecturer' };
+    let paginate = syzoj.utils.paginate(await User.countForPagination(where), req.query.page, syzoj.config.page.ranklist);
+    let ranklist = await User.queryPage(paginate, where, { [sort]: order.toUpperCase() });
+    await ranklist.forEachAsync(async x => x.renderInformation());
+
+    res.render('gongbang', {
       ranklist: ranklist,
       paginate: paginate,
       curSort: sort,

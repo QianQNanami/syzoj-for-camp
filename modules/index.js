@@ -10,7 +10,7 @@ const timeAgo = new TimeAgo('zh-CN');
 
 app.get('/', async (req, res) => {
   try {
-    let ranklist = await User.queryRange([1, syzoj.config.page.ranklist_index], { is_show: true }, {
+    let ranklist = await User.queryRange([1, syzoj.config.page.ranklist_index], { is_show: true, user_type: 'student' }, {
       [syzoj.config.sorting.ranklist.field]: syzoj.config.sorting.ranklist.order
     });
     await ranklist.forEachAsync(async x => x.renderInformation());
