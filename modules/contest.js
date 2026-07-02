@@ -365,7 +365,7 @@ app.post('/contest/:id/edit', async (req, res) => {
     await contest.save();
 
     if (!req.body.groups) {
-      req.body.groups = [6];
+      req.body.groups = [];
     } else if (!Array.isArray(req.body.groups)) {
       req.body.groups = [req.body.groups];
     }
