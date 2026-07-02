@@ -50,6 +50,12 @@ app.get('/submissions', async (req, res) => {
         query.andWhere('type = 1');
         query.andWhere('type_info = :type_info', { type_info: contestId });
         inContest = true;
+
+        // Students only ever see their own submissions for a contest, even
+        // once it has ended and is otherwise browsable by everyone.
+        if (curUser && curUser.user_type === 'student' && !await contest.isSupervisior(curUser)) {
+          query.andWhere('user_id = :cur_user_id', { cur_user_id: curUser.id });
+        }
       } else {
         throw new Error("您暂时无权查看此比赛的详细评测信息。");
       }

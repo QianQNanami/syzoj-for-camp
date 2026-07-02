@@ -47,27 +47,33 @@
               problem.min = minPos;
             }
 
-            let i = 0, rank = 0, lastItem;
+            let i = 0, rank = 0, lastItem, visibleCount = 0;
             for (let item of ranklist) {
               i++;
               let latest = contest.start_time, timeSum = 0, unacceptedCount = 0;
+
+              // Rank/tie-break bookkeeping must run for every item regardless of
+              // whether its row is actually rendered below (selfOnly mode), since
+              // later items compare against lastItem to detect ties.
+              if (contest.type === 'noi' || contest.type === 'ioi') {
+                if (i === 1 || item.player.score !== lastItem.player.score) rank = i;
+              } else if (contest.type === 'acm') {
+                for (let problem of problems) {
+                  if (item.player.score_details[problem.id] && item.player.score_details[problem.id].accepted) {
+                    timeSum += (item.player.score_details[problem.id].acceptedTime - contest.start_time) + (item.player.score_details[problem.id].unacceptedCount * 20 * 60);
+                    unacceptedCount += item.player.score_details[problem.id].unacceptedCount;
+                  }
+                }
+                item.player.timeSum = timeSum;
+
+                if (i === 1 || item.player.score !== lastItem.player.score || item.player.timeSum !== lastItem.player.timeSum) rank = i;
+              }
+
+              const shouldRenderRow = !selfOnly || (curUserId != null && item.user.id === curUserId);
+              if (shouldRenderRow) {
+                visibleCount++;
             %>
             <tr>
-                <%
-                  if (contest.type === 'noi' || contest.type === 'ioi') {
-                    if (i === 1 || item.player.score !== lastItem.player.score) rank = i;
-                  } else if (contest.type === 'acm') {
-                    for (let problem of problems) {
-                      if (item.player.score_details[problem.id] && item.player.score_details[problem.id].accepted) {
-                        timeSum += (item.player.score_details[problem.id].acceptedTime - contest.start_time) + (item.player.score_details[problem.id].unacceptedCount * 20 * 60);
-                        unacceptedCount += item.player.score_details[problem.id].unacceptedCount;
-                      }
-                    }
-                    item.player.timeSum = timeSum;
-
-                    if (i === 1 || item.player.score !== lastItem.player.score || item.player.timeSum !== lastItem.player.timeSum) rank = i;
-                  }
-                %>
                 <td>
                   <% if (rank == 1) { %>
                     <div class="ui yellow ribbon label">
@@ -151,11 +157,12 @@
                   </td>
                 <% } %>
             </tr>
+            <% } %>
             <% lastItem = item; %>
             <% } %>
             </tbody>
         </table>
-<% if (!ranklist.length) { %>
+<% if (!visibleCount) { %>
 <div style="background-color: #fff; height: 18px; margin-top: -18px; "></div>
 <div class="ui placeholder segment" style="margin-top: 0px; ">
   <div class="ui icon header">

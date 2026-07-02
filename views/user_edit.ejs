@@ -8,7 +8,12 @@
       	<p id="error_info"><%= error_info %></p>
       <% } %>
     </div>
-		<form id="form" action="<%= syzoj.utils.makeUrl(['user', edited_user.id, 'edit']) %>" method="post" onsubmit="return check()">
+    <% if (force_change) { %>
+    <div class="ui warning message">
+      <p>首次登录请先修改密码，然后才能继续使用其它功能。</p>
+    </div>
+    <% } %>
+		<form id="form" action="<%= syzoj.utils.makeUrl(['user', edited_user.id, 'edit'], force_change ? { force_change: 1 } : null) %>" method="post" onsubmit="return check()">
       <div class="ui form">
       <div class="field">
 	    	<label for="username">用户名</label>
@@ -56,6 +61,12 @@
       <label for="information">个性签名</label>
         <textarea class="markdown-edit" rows="5" id="information" name="information"><%= edited_user.information %></textarea>
       </div>
+      <% if (edited_user.user_type === 'student') { %>
+      <div class="field">
+        <label class="ui header">密码</label>
+        <p>学生账号不支持自行修改密码。</p>
+      </div>
+      <% } else { %>
       <div class="field">
       <label class="ui header">密码</label>
         <input type="password" placeholder="原密码（留空则不修改）" name="old_password" id="old_password">
@@ -68,6 +79,7 @@
           <input type="password" placeholder="确认密码" id="password2">
         </div>
       </div>
+      <% } %>
       <%
       let allowedManagePrivilege = user && user.is_admin;
       %>
@@ -112,7 +124,11 @@
       <% } %>
       <div style="text-align: center; margin-top: 30px; ">
         <button id="submit_button" type="submit" class="ui blue labeled icon button"><i class="ui icon edit"></i>修改</button>
+        <% if (force_change) { %>
+        <a href-post="<%= syzoj.utils.makeUrl(['logout']) %>" class="ui labeled icon button"><i class="ui icon power"></i>退出登录</a>
+        <% } else { %>
         <a href="<%= syzoj.utils.makeUrl(['user', edited_user.id]) %>" class="ui labeled icon button"><i class="ui icon angle left"></i>返回</a>
+        <% } %>
       </div>
       </div>
 		</form>

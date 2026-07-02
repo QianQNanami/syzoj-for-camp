@@ -222,7 +222,8 @@ app.get('/user/:id/edit', async (req, res) => {
 
     res.render('user_edit', Object.assign({
       edited_user: user,
-      error_info: null
+      error_info: null,
+      force_change: req.query.force_change === '1'
     }, editData));
   } catch (e) {
     syzoj.log(e);
@@ -249,12 +250,17 @@ app.post('/user/:id/edit', async (req, res) => {
     if (!allowedEdit) throw new ErrorMessage('您没有权限进行此操作。');
 
     if (req.body.new_password) {
+      const isSelfChange = res.locals.user && res.locals.user.id === user.id;
+      if (isSelfChange && user.user_type === 'student') {
+        throw new ErrorMessage('学生账号不允许自行修改密码。');
+      }
       if (req.body.old_password) {
         if (user.password !== req.body.old_password && !await res.locals.user.hasPrivilege('manage_user')) throw new ErrorMessage('旧密码错误。');
       } else if (!await res.locals.user.hasPrivilege('manage_user')) {
         throw new ErrorMessage('请输入旧密码。');
       }
       user.password = req.body.new_password;
+      user.must_change_password = false;
     }
 
     if (res.locals.user && await res.locals.user.hasPrivilege('manage_user')) {
@@ -309,7 +315,8 @@ app.post('/user/:id/edit', async (req, res) => {
 
     res.render('user_edit', Object.assign({
       edited_user: user,
-      error_info: ''
+      error_info: '',
+      force_change: false
     }, editData));
   } catch (e) {
     if (!user) {
@@ -332,7 +339,8 @@ app.post('/user/:id/edit', async (req, res) => {
 
     res.render('user_edit', Object.assign({
       edited_user: user,
-      error_info: e.message
+      error_info: e.message,
+      force_change: req.query.force_change === '1'
     }, editData));
   }
 });

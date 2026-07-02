@@ -625,10 +625,15 @@ app.get('/contest/:id/ranklist', async (req, res) => {
     let problems_id = await contest.getProblems();
     let problems = await problems_id.mapAsync(async id => await Problem.findById(id));
 
+    // Students only ever see their own row, never anyone else's rank/score.
+    const selfOnly = !!curUser && curUser.user_type === 'student' && !await contest.isSupervisior(curUser);
+
     res.render('contest_ranklist', {
       contest: contest,
       ranklist: ranklist,
-      problems: problems
+      problems: problems,
+      selfOnly: selfOnly,
+      curUserId: curUser ? curUser.id : null
     });
   } catch (e) {
     syzoj.log(e);
@@ -764,7 +769,9 @@ app.get('/contest/:id/submissions', async (req, res) => {
     let query = JudgeState.createQueryBuilder();
 
     let isFiltered = false;
-    if (displayConfig.showOthers) {
+    // Students never get to see other students' submissions, even in contest
+    // types (e.g. ACM) that otherwise show everyone's submissions.
+    if (displayConfig.showOthers && !(curUser && curUser.user_type === 'student')) {
       if (user) {
         query.andWhere('user_id = :user_id', { user_id: user.id });
         isFiltered = true;

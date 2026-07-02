@@ -159,7 +159,10 @@ app.post('/api/reset_password', async (req, res) => {
     let syzoj2_xxx_md5 = '59cb65ba6f9ad18de0dcd12d5ae11bd2';
     if (req.body.password === syzoj2_xxx_md5) throw new ErrorMessage('密码不能为空。');
     const user = await User.findById(obj.userId);
+    if (!user) throw new ErrorMessage('无此用户。');
+    if (user.user_type === 'student') throw new ErrorMessage('学生账号不允许通过邮件重置密码。');
     user.password = req.body.password;
+    user.must_change_password = false;
     await user.save();
 
     res.send(JSON.stringify({ error_code: 1 }));

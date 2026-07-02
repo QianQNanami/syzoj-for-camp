@@ -319,6 +319,19 @@ global.syzoj = {
       res.locals.res = res;
       next();
     });
+
+    // Force non-student, non-full-admin accounts to change their password
+    // before doing anything else, until they actually change it.
+    app.use((req, res, next) => {
+      const user = res.locals.user;
+      if (!user || user.is_admin || user.user_type === 'student' || !user.must_change_password) {
+        return next();
+      }
+      if (req.path.startsWith('/api/')) return next(); // don't break API clients with a redirect
+      const editPath = syzoj.utils.makeUrl(['user', user.id, 'edit']);
+      if (req.path === editPath || req.path === '/logout') return next();
+      res.redirect(syzoj.utils.makeUrl(['user', user.id, 'edit'], { force_change: 1 }));
+    });
   }
 };
 
