@@ -297,7 +297,9 @@ module.exports.judge = async function (judge_state, problem, priority) {
     testData: problem.id.toString(),
     type: type,
     priority: priority,
-    realPriority: priority - parseInt(judge_state.id) / 10000000,
+    // Tie-break within the same priority tier by submission order (FIFO): a larger id (newer
+    // submission) must sort after a smaller id (older submission), so add rather than subtract.
+    realPriority: priority + parseInt(judge_state.id) / 10000000,
     param: param
   };
 
