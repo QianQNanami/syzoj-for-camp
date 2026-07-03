@@ -27,6 +27,10 @@ function emitRoomLists(game) {
 
 function emitActionResult(socket, result) {
   if (!result || result.ok) return;
+  if (result.needsChoice) {
+    socket.emit('playChoiceNeeded', { options: result.options });
+    return;
+  }
   socket.emit('actionError', { message: result.message || 'Invalid action.' });
 }
 
@@ -99,7 +103,7 @@ function initializeGuandan(io) {
     socket.on('playCards', (data) => {
       const game = findRoomBySocket(socket.id);
       if (!game) return;
-      emitActionResult(socket, game.playCards(socket.id, data && data.cardIds));
+      emitActionResult(socket, game.playCards(socket.id, data && data.cardIds, data && data.choice));
     });
 
     socket.on('pass', () => {

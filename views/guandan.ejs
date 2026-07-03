@@ -255,6 +255,16 @@
   </div>
 </div>
 
+<div class="ui modal" id="playChoiceModal">
+  <div class="header">这几张牌有多种合法出法，请选择</div>
+  <div class="content">
+    <div id="playChoiceOptions" class="ui vertical fluid buttons"></div>
+  </div>
+  <div class="actions">
+    <div class="ui cancel button">取消</div>
+  </div>
+</div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 var socket = io('/guandan_socket');
@@ -399,6 +409,31 @@ socket.on('gameLog', function (data) {
 socket.on('actionError', function (data) {
   alert(data.message || '操作失败。');
 });
+
+var pendingPlayCardIds = null;
+
+socket.on('playChoiceNeeded', function (data) {
+  showPlayChoicePicker(data.options);
+});
+
+function showPlayChoicePicker(options) {
+  var html = options.map(function(option, idx) {
+    var desc = option.title + '（' + option.assignedRanks.map(escapeHtml).join(' ') + '）';
+    return '<button class="ui button" onclick="choosePlayInterpretation(' + idx + ')">' + desc + '</button>';
+  }).join('');
+  $('#playChoiceOptions').html(html);
+  $('#playChoiceModal').data('options', options).modal('show');
+}
+
+function choosePlayInterpretation(idx) {
+  var options = $('#playChoiceModal').data('options');
+  var option = options[idx];
+  $('#playChoiceModal').modal('hide');
+  socket.emit('playCards', {
+    cardIds: pendingPlayCardIds,
+    choice: { type: option.type, size: option.size, primary: option.primary },
+  });
+}
 
 function phaseText(phase) {
   if (phase === 'lobby') return '等待开始';
@@ -549,15 +584,50 @@ function syncHandOrder() {
   var known = {};
   handOrder.forEach(function(pile) { pile.forEach(function(id) { known[id] = true; }); });
   var newCards = currentState.self.hand.filter(function(c) { return !known[c.id]; });
-  if (newCards.length) {
-    var byRank = {};
-    var rankOrder = [];
-    newCards.forEach(function(c) {
-      if (!byRank[c.rank]) { byRank[c.rank] = []; rankOrder.push(c.rank); }
-      byRank[c.rank].push(c.id);
-    });
-    rankOrder.forEach(function(r) { handOrder.push(byRank[r]); });
-  }
+  if (!newCards.length) return;
+
+  // The server always sends self.hand pre-sorted by rank (level card highest,
+  // 2 lowest). Use that as the ground truth for where a newly received card
+  // (e.g. a tribute/return card mid-hand) should slot in, instead of just
+  // dumping it at the end of the display order.
+  var byId = {};
+  currentState.self.hand.forEach(function(c) { byId[c.id] = c; });
+  var canonicalRankIndex = {};
+  currentState.self.hand.forEach(function(c, idx) {
+    if (!(c.rank in canonicalRankIndex)) canonicalRankIndex[c.rank] = idx;
+  });
+
+  var newByRank = {};
+  var newRankOrder = [];
+  newCards.forEach(function(c) {
+    if (!newByRank[c.rank]) { newByRank[c.rank] = []; newRankOrder.push(c.rank); }
+    newByRank[c.rank].push(c.id);
+  });
+
+  newRankOrder.forEach(function(rank) {
+    var mergeIndex = -1;
+    for (var i = 0; i < handOrder.length; i++) {
+      var pile = handOrder[i];
+      if (pile.length && byId[pile[0]] && byId[pile[0]].rank === rank) {
+        mergeIndex = i;
+        break;
+      }
+    }
+    if (mergeIndex !== -1) {
+      handOrder[mergeIndex] = handOrder[mergeIndex].concat(newByRank[rank]);
+      return;
+    }
+
+    var insertAt = handOrder.length;
+    for (var j = 0; j < handOrder.length; j++) {
+      var pileCard = byId[handOrder[j][0]];
+      if (pileCard && canonicalRankIndex[pileCard.rank] > canonicalRankIndex[rank]) {
+        insertAt = j;
+        break;
+      }
+    }
+    handOrder.splice(insertAt, 0, newByRank[rank]);
+  });
 }
 
 function renderHand() {
@@ -681,7 +751,8 @@ function renderActions() {
 }
 
 function playSelected() {
-  socket.emit('playCards', { cardIds: selectedIds() });
+  pendingPlayCardIds = selectedIds();
+  socket.emit('playCards', { cardIds: pendingPlayCardIds });
 }
 
 function passTurn() {

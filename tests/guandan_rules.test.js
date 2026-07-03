@@ -53,11 +53,95 @@ function testPatterns() {
     card('5', 'C'),
     card('6', 'S'),
   ], '7');
-  assert.strictEqual(hand, null, '2 cannot be used in a straight');
+  assert(hand, '2 is a normal low card and can be the bottom of a straight');
+  assert.strictEqual(hand.type, 'straight');
+
+  hand = GuandanRules.evaluate([
+    card('A', 'S'),
+    card('2', 'H'),
+    card('3', 'D'),
+    card('4', 'C'),
+    card('5', 'S'),
+  ], '7');
+  assert(hand, 'A-2-3-4-5 (the wheel) should be a legal, and the lowest, straight');
+  assert.strictEqual(hand.type, 'straight');
+  const wheelPrimary = hand.primary;
+
+  hand = GuandanRules.evaluate([
+    card('2', 'S'),
+    card('3', 'H'),
+    card('4', 'D'),
+    card('5', 'C'),
+    card('6', 'S'),
+  ], '7');
+  assert(hand.primary > wheelPrimary, '2-3-4-5-6 should rank above the wheel A-2-3-4-5');
+
+  hand = GuandanRules.evaluate([
+    card('10', 'S'),
+    card('J', 'H'),
+    card('Q', 'D'),
+    card('K', 'C'),
+    card('A', 'S'),
+  ], '7');
+  assert(hand, '10-J-Q-K-A should still be a legal straight (Ace as the normal high card)');
+  assert.strictEqual(hand.type, 'straight');
+  assert(hand.primary > wheelPrimary, '10-J-Q-K-A should rank as the highest straight, above the wheel');
+
+  hand = GuandanRules.evaluate([
+    card('K', 'S'),
+    card('A', 'H'),
+    card('2', 'D'),
+    card('3', 'C'),
+    card('4', 'S'),
+  ], '7');
+  assert.strictEqual(hand, null, 'K-A-2-3-4 should not wrap around; only A-2-3-4-5 and 10-J-Q-K-A touch the Ace');
 
   hand = GuandanRules.evaluate([card('BJ', 'J', 0), card('BJ', 'J', 1)], '7');
   assert(hand, 'two big jokers should be a valid pair');
   assert.strictEqual(hand.type, 'pair');
+}
+
+function testAmbiguousWildcardInterpretationsAreAllSurfaced() {
+  // 4,5,6,7 plus a red-heart K wildcard can complete either 3-4-5-6-7 or
+  // 4-5-6-7-8: both are legal, and which one to use is the player's choice.
+  const cards = [card('4', 'S'), card('5', 'C'), card('6', 'D'), card('7', 'S'), card('K', 'H')];
+  const options = GuandanRules.evaluateOptions(cards, 'K');
+  assert.strictEqual(options.length, 2, 'both straight completions should be offered');
+  assert(options.every((o) => o.type === 'straight'));
+  const primaries = options.map((o) => o.primary).sort((a, b) => a - b);
+  assert.strictEqual(primaries[0], GuandanRules.straightHigh(['3', '4', '5', '6', '7']));
+  assert.strictEqual(primaries[1], GuandanRules.straightHigh(['4', '5', '6', '7', '8']));
+
+  // evaluate() (used by anything that doesn't care about the ambiguity,
+  // e.g. bomb detection) should still deterministically pick the strongest.
+  const best = GuandanRules.evaluate(cards, 'K');
+  assert.strictEqual(best.primary, primaries[1]);
+
+  // A hand with only one legal interpretation should not force a choice.
+  const unambiguous = GuandanRules.evaluateOptions([card('9', 'S'), card('9', 'H')], 'K');
+  assert.strictEqual(unambiguous.length, 1);
+}
+
+function testPlayCardsRequiresChoiceOnAmbiguousPattern() {
+  const game = makeGame();
+  game.phase = 'playing';
+  game.currentLevel = 'K';
+  game.currentTurn = 0;
+  const ids = ['0-S-4', '0-C-5', '0-D-6', '0-S-7', '0-H-K'];
+  game.players[0].hand = [card('4', 'S'), card('5', 'C'), card('6', 'D'), card('7', 'S'), card('K', 'H')];
+
+  const withoutChoice = game.playCardsForPlayer(game.players[0], ids);
+  assert.strictEqual(withoutChoice.ok, false);
+  assert.strictEqual(withoutChoice.needsChoice, true, 'an ambiguous play should ask the player to choose, not auto-pick');
+  assert.strictEqual(withoutChoice.options.length, 2);
+  assert.strictEqual(game.players[0].hand.length, 5, 'an ambiguous attempt must not consume any cards');
+
+  const lowChoice = withoutChoice.options.find((o) => o.assignedRanks[0] === '3');
+  const withChoice = game.playCardsForPlayer(game.players[0], ids, {
+    type: lowChoice.type, size: lowChoice.size, primary: lowChoice.primary,
+  });
+  assert.strictEqual(withChoice.ok, true);
+  assert.strictEqual(game.lastPlay.hand.primary, lowChoice.primary, 'the player-chosen interpretation should be used, not the strongest one');
 }
 
 function testBombComparison() {
@@ -104,7 +188,7 @@ function testHandSettlement() {
   game.finishOrder = [0, 2, 1, 3];
   game.phase = 'playing';
   game.endHand();
-  assert.strictEqual(game.teamLevels[0], '5', 'double-up should advance three levels from 2 to 5');
+  assert.strictEqual(game.teamLevels[0], '6', 'double-up should advance four levels from 2 to 6');
 
   game = makeGame();
   game.finishOrder = [0, 1, 2, 3];
@@ -278,10 +362,12 @@ function testDoubleUpEndsHandImmediately() {
   assert.strictEqual(game.phase, 'handOver', 'the hand should end immediately on double-up, not keep playing');
   assert.strictEqual(game.players[0].finishedRank, 1);
   assert.strictEqual(game.players[2].finishedRank, 2);
-  assert.strictEqual(game.teamLevels[0], '5', 'double-up should still advance the winning team three levels');
+  assert.strictEqual(game.teamLevels[0], '6', 'double-up should still advance the winning team four levels');
 }
 
 testPatterns();
+testAmbiguousWildcardInterpretationsAreAllSurfaced();
+testPlayCardsRequiresChoiceOnAmbiguousPattern();
 testBombComparison();
 testHandSettlement();
 testDoubleTributeAssignment();
