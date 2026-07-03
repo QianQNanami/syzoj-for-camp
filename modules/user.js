@@ -319,7 +319,7 @@ app.post('/user/:id/edit', async (req, res) => {
       }
     }
 
-    if (req.body.information !== user.information) {
+    if ((req.body.information || '') !== (user.information || '')) {
       if (!res.locals.user || !await res.locals.user.hasPrivilege('manage_user')) {
         throw new ErrorMessage('您没有权限修改个性签名。');
       }
