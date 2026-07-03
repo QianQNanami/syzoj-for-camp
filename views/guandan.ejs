@@ -55,7 +55,20 @@
   min-height: 100px;
   padding: 10px;
   overflow-x: auto;
+  overflow-y: hidden;
   white-space: nowrap;
+}
+.gd-stack {
+  position: relative;
+  display: inline-block;
+  width: 60px;
+  vertical-align: top;
+  margin: 3px;
+}
+.gd-stack .gd-card {
+  position: absolute;
+  left: 0;
+  margin: 0;
 }
 .gd-table {
   min-height: 180px;
@@ -258,7 +271,7 @@ socket.on('gameBegin', function (data) {
 
 socket.on('state', function (data) {
   currentState = data;
-  selectedCards.clear();
+  pruneSelectedCards();
   $('#guandanLobby').hide();
   $('#guandanGame').show();
   renderState();
@@ -367,44 +380,80 @@ function renderFinishOrder() {
   }).join(' '));
 }
 
-function syncHandOrder() {
-  var currentIds = currentState.self.hand.map(function(c) { return c.id; });
+function pruneSelectedCards() {
   if (currentState.handNumber !== handOrderHandNumber) {
-    handOrder = currentIds.slice();
+    selectedCards.clear();
+    return;
+  }
+  var validIds = {};
+  currentState.self.hand.forEach(function(c) { validIds[c.id] = true; });
+  Array.from(selectedCards).forEach(function(id) {
+    if (!validIds[id]) selectedCards.delete(id);
+  });
+}
+
+function handRanksInOrder() {
+  var ranks = [];
+  var seen = {};
+  currentState.self.hand.forEach(function(c) {
+    if (!seen[c.rank]) { seen[c.rank] = true; ranks.push(c.rank); }
+  });
+  return ranks;
+}
+
+function syncHandOrder() {
+  var currentRanks = handRanksInOrder();
+  if (currentState.handNumber !== handOrderHandNumber) {
+    handOrder = currentRanks.slice();
     handOrderHandNumber = currentState.handNumber;
     return;
   }
   var currentSet = {};
-  currentIds.forEach(function(id) { currentSet[id] = true; });
-  handOrder = handOrder.filter(function(id) { return currentSet[id]; });
+  currentRanks.forEach(function(r) { currentSet[r] = true; });
+  handOrder = handOrder.filter(function(r) { return currentSet[r]; });
   var known = {};
-  handOrder.forEach(function(id) { known[id] = true; });
-  currentIds.forEach(function(id) { if (!known[id]) handOrder.push(id); });
+  handOrder.forEach(function(r) { known[r] = true; });
+  currentRanks.forEach(function(r) { if (!known[r]) handOrder.push(r); });
 }
 
 function renderHand() {
   syncHandOrder();
-  var byId = {};
-  currentState.self.hand.forEach(function(c) { byId[c.id] = c; });
-  $('#myHand').html(handOrder.map(function(id) {
-    return renderCard(byId[id], true);
+  var groups = {};
+  currentState.self.hand.forEach(function(c) {
+    if (!groups[c.rank]) groups[c.rank] = [];
+    groups[c.rank].push(c);
+  });
+  $('#myHand').html(handOrder.map(function(rankKey) {
+    return renderStack(groups[rankKey] || []);
   }).join(''));
+}
+
+function renderStack(cards) {
+  var STACK_OFFSET = 20;
+  var height = 78 + Math.max(0, cards.length - 1) * STACK_OFFSET;
+  var inner = cards.map(function(card, idx) {
+    var style = 'top:' + (idx * STACK_OFFSET) + 'px; z-index:' + idx + ';';
+    return renderCard(card, true, style);
+  }).join('');
+  return '<div class="gd-stack" style="height:' + height + 'px;">' + inner + '</div>';
 }
 
 function moveSelectedTo(direction) {
   var ids = selectedIds();
   if (!ids.length) return alert('请先选中要移动的牌。');
-  var idSet = {};
-  ids.forEach(function(id) { idSet[id] = true; });
-  var moving = handOrder.filter(function(id) { return idSet[id]; });
-  var rest = handOrder.filter(function(id) { return !idSet[id]; });
+  var byId = {};
+  currentState.self.hand.forEach(function(c) { byId[c.id] = c; });
+  var selectedRanks = {};
+  ids.forEach(function(id) { if (byId[id]) selectedRanks[byId[id].rank] = true; });
+  var moving = handOrder.filter(function(r) { return selectedRanks[r]; });
+  var rest = handOrder.filter(function(r) { return !selectedRanks[r]; });
   handOrder = direction === 'left' ? moving.concat(rest) : rest.concat(moving);
   renderHand();
 }
 
 function resetHandOrder() {
   if (!currentState) return;
-  handOrder = currentState.self.hand.map(function(c) { return c.id; });
+  handOrder = handRanksInOrder();
   renderHand();
 }
 
@@ -420,14 +469,15 @@ function cardDisabled(card) {
   if (currentState.phase === 'return' && currentState.returnCard) {
     return currentState.returnCard.eligible.indexOf(card.id) === -1;
   }
-  return currentState.self.finishedRank || currentState.phase !== 'playing' || !currentState.canAct;
+  if (currentState.self.finishedRank) return true;
+  return currentState.phase !== 'playing';
 }
 
-function renderCard(card, selectable) {
+function renderCard(card, selectable, extraStyle) {
   var disabled = selectable && cardDisabled(card);
   var selected = selectedCards.has(card.id);
   var onclick = selectable && !disabled ? ' onclick="toggleCard(\'' + card.id + '\')"' : '';
-  return '<div class="gd-card ' + cardColor(card) + (selected ? ' selected' : '') + (disabled ? ' disabled' : '') + '"' + onclick + '>' +
+  return '<div class="gd-card ' + cardColor(card) + (selected ? ' selected' : '') + (disabled ? ' disabled' : '') + '" style="' + (extraStyle || '') + '"' + onclick + '>' +
     '<div class="gd-card-rank">' + escapeHtml(card.label) + '</div>' +
     '<div class="gd-card-suit">' + escapeHtml(card.suitLabel || '') + '</div>' +
     '</div>';
@@ -459,14 +509,16 @@ function renderActions() {
   } else if (currentState.phase === 'playing' && currentState.canAct && !currentState.self.finishedRank) {
     html += '<button class="ui green button" onclick="playSelected()">出牌</button>';
     if (currentState.lastPlay) html += '<button class="ui button" onclick="passTurn()">过牌</button>';
-    html += '<button class="ui basic button" onclick="moveSelectedTo(\'left\')">选中牌移到左侧</button>';
-    html += '<button class="ui basic button" onclick="moveSelectedTo(\'right\')">选中牌移到右侧</button>';
   } else if (currentState.phase === 'handOver') {
     if (currentState.selfReadyForNextHand) {
       html += '<div class="ui disabled button">已确认，等待其他人（' + currentState.handOverReadyCount + '/' + currentState.handOverRequiredCount + '）</div>';
     } else {
       html += '<button class="ui primary button" onclick="startNextHand()">开始下一副</button>';
     }
+  }
+  if (currentState.phase === 'playing' && !currentState.self.finishedRank) {
+    html += '<button class="ui basic button" onclick="moveSelectedTo(\'left\')">选中牌移到左侧</button>';
+    html += '<button class="ui basic button" onclick="moveSelectedTo(\'right\')">选中牌移到右侧</button>';
   }
   if (currentState.self.hand.length) {
     html += '<button class="ui basic button" onclick="resetHandOrder()">还原手牌</button>';
