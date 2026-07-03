@@ -21,7 +21,7 @@ async function getUserEditData(editedUser, currentUser) {
     userGroups = (await editedUser.getGroup()).map(g => g.group_id);
   }
 
-  if (editedUser && currentUser && currentUser.is_admin) {
+  if (editedUser && currentUser && await currentUser.hasPrivilege('manage_user')) {
     allGroups = await syzoj.model('group').find();
     allTeachers = await Teacher.find({
       order: { name: 'ASC' }
@@ -311,7 +311,9 @@ app.post('/user/:id/edit', async (req, res) => {
 
       let privileges = req.body.privileges;
       await user.setPrivileges(privileges);
+    }
 
+    if (res.locals.user && await res.locals.user.hasPrivilege('manage_user')) {
       await user.setGroup(normalizeIdList(req.body.groups));
 
       if (user.user_type === 'student') {

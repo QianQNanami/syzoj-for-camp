@@ -102,7 +102,7 @@
           <label>管理用户</label>
         </div>
       </div>
-      <% if (user.is_admin) { %>
+      <% if (user.allowedManage) { %>
       <div class="field">
         <label>班级</label>
         <select class="ui fluid search dropdown" multiple="" name="groups">
