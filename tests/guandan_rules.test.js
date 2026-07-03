@@ -257,6 +257,30 @@ function testAwayPlayerAutoTributeAndReturn() {
   assert(game.players[3].hand.some((c) => c.id === lowCard.id));
 }
 
+function testDoubleUpEndsHandImmediately() {
+  const game = makeGame();
+  game.phase = 'playing';
+  game.currentTurn = 0;
+  game.players[0].hand = [card('3', 'S', 0)];
+  const r1 = game.playCardsForPlayer(game.players[0], [game.players[0].hand[0].id]);
+  assert(r1.ok);
+  assert.strictEqual(game.finishOrder.length, 1, 'only the first player has finished so far');
+  assert.strictEqual(game.phase, 'playing', 'hand should not end after a single finisher');
+
+  // Seat 2 is seat 0's teammate (team = seat % 2). Simulate them leading and
+  // finishing next, producing a 双上 (double-up).
+  game.currentTurn = 2;
+  game.lastPlay = null;
+  game.players[2].hand = [card('4', 'S', 0)];
+  const r2 = game.playCardsForPlayer(game.players[2], [game.players[2].hand[0].id]);
+  assert(r2.ok);
+  assert.strictEqual(game.finishOrder.length, 4, 'double-up should immediately auto-finish all 4 players');
+  assert.strictEqual(game.phase, 'handOver', 'the hand should end immediately on double-up, not keep playing');
+  assert.strictEqual(game.players[0].finishedRank, 1);
+  assert.strictEqual(game.players[2].finishedRank, 2);
+  assert.strictEqual(game.teamLevels[0], '5', 'double-up should still advance the winning team three levels');
+}
+
 testPatterns();
 testBombComparison();
 testHandSettlement();
@@ -268,5 +292,6 @@ testTributeGiverSeesResolvedRecipient();
 testHandOverRequiresAllPresentPlayersToConfirm();
 testAwayPlayerAutoPlaysOrPasses();
 testAwayPlayerAutoTributeAndReturn();
+testDoubleUpEndsHandImmediately();
 
 console.log('guandan rules tests passed');

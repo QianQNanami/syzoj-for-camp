@@ -92,6 +92,22 @@
 .gd-player.self {
   background: #f8ffff;
 }
+@keyframes gd-urgent-pulse {
+  0%, 100% {
+    box-shadow: 0 0 var(--gd-glow-blur, 6px) 0 var(--gd-glow-color, #fbbd08);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 calc(var(--gd-glow-blur, 6px) * 2.2) calc(var(--gd-glow-blur, 6px) * .3) var(--gd-glow-color, #fbbd08);
+    transform: scale(1.02);
+  }
+}
+.gd-player.urgent {
+  animation-name: gd-urgent-pulse;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+  border-color: var(--gd-glow-color, #fbbd08) !important;
+}
 .gd-finish {
   min-height: 32px;
 }
@@ -103,6 +119,48 @@
   <div class="ui center aligned basic segment">
     <button id="hostButton" class="ui large primary button">创建房间</button>
     <button id="joinButton" class="ui large secondary button">加入房间</button>
+    <button id="spectateButton" class="ui large basic button">观战</button>
+  </div>
+</div>
+
+<div id="guandanSpectate" style="display: none;">
+  <div class="gd-layout">
+    <div>
+      <div class="ui segment">
+        <h4 class="ui dividing header">观战中</h4>
+        <div id="spectateRoomInfo" class="ui relaxed list"></div>
+      </div>
+
+      <div class="ui segment">
+        <h4 class="ui dividing header">名次</h4>
+        <div id="spectateFinishOrder" class="gd-finish"></div>
+      </div>
+
+      <div class="ui segment">
+        <h4 class="ui dividing header">日志</h4>
+        <div id="spectateLog" class="gd-log"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="ui segment">
+        <h3 class="ui header" id="spectateTableTitle"></h3>
+        <div class="ui two column stackable grid" id="spectatePlayersGrid"></div>
+      </div>
+
+      <div class="ui segment gd-table">
+        <h4 class="ui dividing header">上一手</h4>
+        <div id="spectateLastPlay"></div>
+      </div>
+
+      <div class="ui segment">
+        <h4 class="ui dividing header" id="spectateHandTitle">点击左侧玩家查看手牌</h4>
+        <div id="spectateHand" class="gd-hand"></div>
+      </div>
+    </div>
+  </div>
+  <div style="text-align: center; margin-top: 10px;">
+    <button class="ui black button" onclick="exitSpectate()">离开观战</button>
   </div>
 </div>
 
@@ -181,6 +239,22 @@
   </div>
 </div>
 
+<div class="ui modal" id="spectateModal">
+  <div class="header">观战</div>
+  <div class="content">
+    <div class="ui form">
+      <div class="field">
+        <label>房间号</label>
+        <input type="text" id="spectate-code-field" placeholder="4 位房间号">
+      </div>
+      <button onclick="beginSpectate()" class="ui primary button">进入观战</button>
+    </div>
+  </div>
+  <div class="actions">
+    <div class="ui cancel button">关闭</div>
+  </div>
+</div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 var socket = io('/guandan_socket');
@@ -190,10 +264,13 @@ var selectedCards = new Set();
 var hostedCode = null;
 var handOrder = [];
 var handOrderHandNumber = null;
+var spectatorState = null;
+var spectateSelectedSeat = null;
 
 $(document).ready(function () {
   $('#hostButton').click(function() { $('#hostModal').modal('show'); });
   $('#joinButton').click(function() { $('#joinModal').modal('show'); });
+  $('#spectateButton').click(function() { $('#spectateModal').modal('show'); });
 });
 
 function escapeHtml(text) {
@@ -211,6 +288,18 @@ function beginHost() {
 
 function joinRoom() {
   socket.emit('join', { code: $('#code-field').val(), username: currentUser });
+}
+
+function beginSpectate() {
+  socket.emit('spectate', { code: $('#spectate-code-field').val(), username: currentUser });
+}
+
+function exitSpectate() {
+  socket.emit('spectatorExit', {});
+  spectatorState = null;
+  spectateSelectedSeat = null;
+  $('#guandanSpectate').hide();
+  $('#guandanLobby').show();
 }
 
 function startGame(code) {
@@ -277,14 +366,34 @@ socket.on('state', function (data) {
   currentState = data;
   pruneSelectedCards();
   $('#guandanLobby').hide();
+  $('#guandanSpectate').hide();
   $('#guandanGame').show();
   renderState();
 });
 
+socket.on('spectateJoin', function (data) {
+  if (!data) {
+    alert('房间不存在。');
+    return;
+  }
+  $('#spectateModal').modal('hide');
+  $('#guandanLobby').hide();
+  $('#guandanGame').hide();
+  $('#guandanSpectate').show();
+});
+
+socket.on('spectateState', function (data) {
+  spectatorState = data;
+  renderSpectate();
+});
+
 socket.on('gameLog', function (data) {
-  var logDiv = $('#gameLog');
-  logDiv.append('<div>' + data.message + '</div>');
-  logDiv.scrollTop(logDiv[0].scrollHeight);
+  ['#gameLog', '#spectateLog'].forEach(function(sel) {
+    var logDiv = $(sel);
+    if (!logDiv.length) return;
+    logDiv.append('<div>' + data.message + '</div>');
+    logDiv.scrollTop(logDiv[0].scrollHeight);
+  });
 });
 
 socket.on('actionError', function (data) {
@@ -346,14 +455,30 @@ function renderPhaseInfo() {
   $('#phaseInfo').text(message);
 }
 
+function urgentGlowColor(t) {
+  // t in [0,1]: 0 = mild gold, 1 = intense red.
+  var from = [251, 189, 8];
+  var to = [219, 40, 40];
+  var mix = from.map(function(c, i) { return Math.round(c + (to[i] - c) * t); });
+  return 'rgb(' + mix.join(',') + ')';
+}
+
 function renderPlayers() {
+  var URGENT_THRESHOLD = 10;
   var html = currentState.players.map(function(player) {
     var classes = 'ui segment gd-player';
+    var style = '';
     if (player.isSelf) classes += ' self';
     if (currentState.currentTurn === player.seat) classes += ' current';
+    if (!player.finishedRank && player.cardCount > 0 && player.cardCount <= URGENT_THRESHOLD) {
+      var t = Math.min(1, (URGENT_THRESHOLD - player.cardCount + 1) / URGENT_THRESHOLD);
+      var duration = (1.7 - t * 1.3).toFixed(2);
+      classes += ' urgent';
+      style = 'animation-duration:' + duration + 's; --gd-glow-color:' + urgentGlowColor(t) + '; --gd-glow-blur:' + Math.round(5 + t * 14) + 'px;';
+    }
     var finish = player.finishedRank ? '<span class="ui red label">第 ' + player.finishedRank + ' 名</span>' : '';
     var away = player.away ? '<span class="ui gray label">离线</span>' : '';
-    return '<div class="column"><div class="' + classes + '">' +
+    return '<div class="column"><div class="' + classes + '" style="' + style + '">' +
       '<h4 class="ui header">' + escapeHtml(player.username) + '</h4>' +
       '<p>座位 ' + (player.seat + 1) + ' | 队伍 ' + (player.team + 1) + '</p>' +
       '<p>剩余 ' + player.cardCount + ' 张 ' + finish + ' ' + away + '</p>' +
@@ -396,48 +521,62 @@ function pruneSelectedCards() {
   });
 }
 
+// handOrder is a list of "piles" (each an array of card ids) rendered as one
+// stack. By default each pile is one rank. Moving a multi-card selection
+// merges those cards into a single new pile at the target side.
+function defaultPiles() {
+  var byRank = {};
+  var rankOrder = [];
+  currentState.self.hand.forEach(function(c) {
+    if (!byRank[c.rank]) { byRank[c.rank] = []; rankOrder.push(c.rank); }
+    byRank[c.rank].push(c.id);
+  });
+  return rankOrder.map(function(r) { return byRank[r]; });
+}
+
 function syncHandOrder() {
-  var currentIds = currentState.self.hand.map(function(c) { return c.id; });
   if (currentState.handNumber !== handOrderHandNumber) {
-    handOrder = currentIds.slice();
+    handOrder = defaultPiles();
     handOrderHandNumber = currentState.handNumber;
     return;
   }
   var currentSet = {};
-  currentIds.forEach(function(id) { currentSet[id] = true; });
-  handOrder = handOrder.filter(function(id) { return currentSet[id]; });
+  currentState.self.hand.forEach(function(c) { currentSet[c.id] = true; });
+  handOrder = handOrder
+    .map(function(pile) { return pile.filter(function(id) { return currentSet[id]; }); })
+    .filter(function(pile) { return pile.length > 0; });
+
   var known = {};
-  handOrder.forEach(function(id) { known[id] = true; });
-  currentIds.forEach(function(id) { if (!known[id]) handOrder.push(id); });
+  handOrder.forEach(function(pile) { pile.forEach(function(id) { known[id] = true; }); });
+  var newCards = currentState.self.hand.filter(function(c) { return !known[c.id]; });
+  if (newCards.length) {
+    var byRank = {};
+    var rankOrder = [];
+    newCards.forEach(function(c) {
+      if (!byRank[c.rank]) { byRank[c.rank] = []; rankOrder.push(c.rank); }
+      byRank[c.rank].push(c.id);
+    });
+    rankOrder.forEach(function(r) { handOrder.push(byRank[r]); });
+  }
 }
 
 function renderHand() {
   syncHandOrder();
   var byId = {};
   currentState.self.hand.forEach(function(c) { byId[c.id] = c; });
-  // Stack consecutive same-rank cards together; a card moved out of its
-  // rank run (via arranging) renders as its own separate stack.
-  var stacks = [];
-  var current = null;
-  handOrder.forEach(function(id) {
-    var card = byId[id];
-    if (!card) return;
-    if (current && current.rank === card.rank) {
-      current.cards.push(card);
-    } else {
-      current = { rank: card.rank, cards: [card] };
-      stacks.push(current);
-    }
-  });
-  $('#myHand').html(stacks.map(function(s) { return renderStack(s.cards); }).join(''));
+  $('#myHand').html(handOrder.map(function(pile) {
+    var cards = pile.map(function(id) { return byId[id]; }).filter(Boolean);
+    return renderStack(cards);
+  }).join(''));
 }
 
-function renderStack(cards) {
+function renderStack(cards, selectable) {
+  if (selectable === undefined) selectable = true;
   var STACK_OFFSET = 20;
   var height = 78 + Math.max(0, cards.length - 1) * STACK_OFFSET;
   var inner = cards.map(function(card, idx) {
     var style = 'top:' + (idx * STACK_OFFSET) + 'px; z-index:' + idx + ';';
-    return renderCard(card, true, style);
+    return renderCard(card, selectable, style);
   }).join('');
   return '<div class="gd-stack" style="height:' + height + 'px;">' + inner + '</div>';
 }
@@ -447,15 +586,25 @@ function moveSelectedTo(direction) {
   if (!ids.length) return alert('请先选中要移动的牌。');
   var idSet = {};
   ids.forEach(function(id) { idSet[id] = true; });
-  var moving = handOrder.filter(function(id) { return idSet[id]; });
-  var rest = handOrder.filter(function(id) { return !idSet[id]; });
-  handOrder = direction === 'left' ? moving.concat(rest) : rest.concat(moving);
+
+  var moving = [];
+  handOrder.forEach(function(pile) {
+    pile.forEach(function(id) { if (idSet[id]) moving.push(id); });
+  });
+
+  var rest = handOrder
+    .map(function(pile) { return pile.filter(function(id) { return !idSet[id]; }); })
+    .filter(function(pile) { return pile.length > 0; });
+
+  handOrder = direction === 'left' ? [moving].concat(rest) : rest.concat([moving]);
+  selectedCards.clear();
   renderHand();
+  renderActions();
 }
 
 function resetHandOrder() {
   if (!currentState) return;
-  handOrder = currentState.self.hand.map(function(c) { return c.id; });
+  handOrder = defaultPiles();
   renderHand();
 }
 
@@ -560,6 +709,72 @@ function exitGame() {
     socket.emit('playerExit', {});
     setTimeout(function() { window.location.reload(); }, 300);
   }
+}
+
+function renderSpectate() {
+  if (!spectatorState) return;
+  $('#spectateRoomInfo').html(
+    '<div class="item">房间：<code>' + escapeHtml(spectatorState.code) + '</code></div>' +
+    '<div class="item">第 ' + spectatorState.handNumber + ' 副，级牌：<b>' + escapeHtml(spectatorState.currentLevel) + '</b></div>' +
+    '<div class="item">队伍 1 等级：' + spectatorState.teamLevels[0] + '；队伍 2 等级：' + spectatorState.teamLevels[1] + '</div>'
+  );
+  $('#spectateTableTitle').html('阶段：' + phaseText(spectatorState.phase) +
+    (spectatorState.currentTurnName ? ' | 当前：<span style="color:#b58105">' + escapeHtml(spectatorState.currentTurnName) + '</span>' : ''));
+
+  $('#spectatePlayersGrid').html(spectatorState.players.map(function(player) {
+    var classes = 'ui segment gd-player';
+    if (spectatorState.currentTurn === player.seat) classes += ' current';
+    if (spectateSelectedSeat === player.seat) classes += ' self';
+    var finish = player.finishedRank ? '<span class="ui red label">第 ' + player.finishedRank + ' 名</span>' : '';
+    var away = player.away ? '<span class="ui gray label">离线</span>' : '';
+    return '<div class="column"><div class="' + classes + '" style="cursor:pointer;" onclick="selectSpectatePlayer(' + player.seat + ')">' +
+      '<h4 class="ui header">' + escapeHtml(player.username) + '</h4>' +
+      '<p>座位 ' + (player.seat + 1) + ' | 队伍 ' + (player.team + 1) + '</p>' +
+      '<p>剩余 ' + player.cardCount + ' 张 ' + finish + ' ' + away + '</p>' +
+      '</div></div>';
+  }).join(''));
+
+  if (!spectatorState.lastPlay) {
+    $('#spectateLastPlay').html('<div class="ui grey text">当前无人压牌。</div>');
+  } else {
+    $('#spectateLastPlay').html(
+      '<div><b>' + escapeHtml(spectatorState.lastPlay.username) + '</b>：' +
+      escapeHtml(spectatorState.lastPlay.title) + '</div>' +
+      '<div>' + spectatorState.lastPlay.cards.map(function(card) { return renderCard(card, false); }).join('') + '</div>'
+    );
+  }
+
+  if (!spectatorState.finishOrder.length) {
+    $('#spectateFinishOrder').html('<span class="ui grey text">暂无</span>');
+  } else {
+    $('#spectateFinishOrder').html(spectatorState.finishOrder.map(function(item, index) {
+      return '<div class="ui label">' + (index + 1) + '. ' + escapeHtml(item.username) + ' / 队伍 ' + (item.team + 1) + '</div>';
+    }).join(' '));
+  }
+
+  renderSpectateHand();
+}
+
+function selectSpectatePlayer(seat) {
+  spectateSelectedSeat = seat;
+  renderSpectate();
+}
+
+function renderSpectateHand() {
+  var player = spectatorState.players.filter(function(p) { return p.seat === spectateSelectedSeat; })[0];
+  if (!player) {
+    $('#spectateHandTitle').text('点击左侧玩家查看手牌');
+    $('#spectateHand').html('');
+    return;
+  }
+  $('#spectateHandTitle').text(escapeHtml(player.username) + ' 的手牌（' + player.hand.length + ' 张）');
+  var groups = {};
+  var order = [];
+  (player.hand || []).forEach(function(c) {
+    if (!groups[c.rank]) { groups[c.rank] = []; order.push(c.rank); }
+    groups[c.rank].push(c);
+  });
+  $('#spectateHand').html(order.map(function(r) { return renderStack(groups[r], false); }).join(''));
 }
 </script>
 

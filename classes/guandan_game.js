@@ -319,6 +319,7 @@ class GuandanGame {
     this.code = code;
     this.host = host;
     this.players = [];
+    this.spectators = [];
     this.phase = 'lobby';
     this.handNumber = 0;
     this.teamLevels = ['2', '2'];
@@ -382,9 +383,25 @@ class GuandanGame {
     return this.players.find((p) => p.socket && p.socket.id === socketId) || null;
   }
 
+  addSpectator(username, socket) {
+    const spectator = { username, socket };
+    this.spectators.push(spectator);
+    return spectator;
+  }
+
+  removeSpectatorBySocket(socketId) {
+    this.spectators = this.spectators.filter((s) => !s.socket || s.socket.id !== socketId);
+  }
+
   emitPlayers(eventName, payload) {
     for (const player of this.players) {
       if (player.socket) player.socket.emit(eventName, payload);
+    }
+  }
+
+  emitSpectators(eventName, payload) {
+    for (const spectator of this.spectators) {
+      if (spectator.socket) spectator.socket.emit(eventName, payload);
     }
   }
 
@@ -392,6 +409,7 @@ class GuandanGame {
     this.logs.push(message);
     if (this.logs.length > 200) this.logs.shift();
     this.emitPlayers('gameLog', { message });
+    this.emitSpectators('gameLog', { message });
   }
 
   startGame() {
@@ -609,7 +627,14 @@ class GuandanGame {
 
     if (player.hand.length === 0) {
       this.markFinished(player);
-      if (this.finishOrder.length >= 3) {
+      if (this.finishOrder.length === 2 && this.isDoubleUp()) {
+        // Both members of a team finished 1st and 2nd: the result (双上) is
+        // already the best possible outcome, so end the hand immediately
+        // instead of making the other team keep playing it out.
+        for (const p of this.players) {
+          if (!p.finishedRank) this.markFinished(p);
+        }
+      } else if (this.finishOrder.length >= 3) {
         const remaining = this.players.find((p) => !p.finishedRank);
         if (remaining) this.markFinished(remaining);
       }
@@ -666,6 +691,13 @@ class GuandanGame {
     player.finishedRank = this.finishOrder.length + 1;
     this.finishOrder.push(player.seat);
     this.broadcastLog(`${player.username} finished #${player.finishedRank}.`);
+  }
+
+  isDoubleUp() {
+    if (this.finishOrder.length < 2) return false;
+    const firstSeat = this.finishOrder[0];
+    const secondSeat = this.finishOrder[1];
+    return this.players[firstSeat].team === this.players[secondSeat].team;
   }
 
   nextUnfinishedFrom(seat) {
@@ -779,6 +811,7 @@ class GuandanGame {
     for (const player of this.players) {
       if (player.socket) player.socket.emit('state', this.stateFor(player));
     }
+    this.emitSpectators('spectateState', this.stateForSpectator());
     this.scheduleAwayAutoAction();
   }
 
@@ -918,6 +951,41 @@ class GuandanGame {
       handOverReadyCount: this.phase === 'handOver' ? this.handOverReady.size : 0,
       handOverRequiredCount: this.phase === 'handOver' ? this.players.filter((p) => !p.away).length : 0,
       selfReadyForNextHand: this.phase === 'handOver' && this.handOverReady.has(viewer.seat),
+      gameOver: this.gameOver,
+    };
+  }
+
+  // Spectators are not participants: they see every player's hand (for
+  // teaching/review purposes) and never get an action prompt of their own.
+  stateForSpectator() {
+    return {
+      code: this.code,
+      phase: this.phase,
+      handNumber: this.handNumber,
+      currentLevel: this.currentLevel,
+      teamLevels: this.teamLevels.slice(),
+      leadingTeam: this.leadingTeam,
+      currentTurn: this.currentTurn,
+      currentTurnName: this.currentTurn === null ? null : this.players[this.currentTurn].username,
+      lastPlay: this.lastPlay ? {
+        username: this.lastPlay.username,
+        cards: this.lastPlay.cards,
+        title: this.lastPlay.hand.title,
+      } : null,
+      finishOrder: this.finishOrder.map((seat) => ({
+        username: this.players[seat].username,
+        seat,
+        team: this.players[seat].team,
+      })),
+      players: this.players.map((p) => ({
+        username: p.username,
+        seat: p.seat,
+        team: p.team,
+        cardCount: p.hand.length,
+        away: p.away,
+        finishedRank: p.finishedRank,
+        hand: p.hand.map(cloneCard),
+      })),
       gameOver: this.gameOver,
     };
   }
