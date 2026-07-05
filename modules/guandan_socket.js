@@ -27,6 +27,10 @@ function emitRoomLists(game) {
 
 function emitActionResult(socket, result) {
   if (!result || result.ok) return;
+  if (result.needsChoice) {
+    socket.emit('playChoiceNeeded', { options: result.options });
+    return;
+  }
   socket.emit('actionError', { message: result.message || 'Invalid action.' });
 }
 
@@ -99,7 +103,7 @@ function initializeGuandan(io) {
     socket.on('playCards', (data) => {
       const game = findRoomBySocket(socket.id);
       if (!game) return;
-      emitActionResult(socket, game.playCards(socket.id, data && data.cardIds));
+      emitActionResult(socket, game.playCards(socket.id, data && data.cardIds, data && data.choice));
     });
 
     socket.on('pass', () => {
@@ -133,7 +137,28 @@ function initializeGuandan(io) {
       if (game.players.length === 0) rooms = rooms.filter((room) => room !== game);
     });
 
+    socket.on('spectate', (data) => {
+      const game = data && rooms.find((room) => room.getCode() === data.code);
+      if (!game || !data.username || data.username.length > 12) {
+        socket.emit('spectateJoin', undefined);
+        return;
+      }
+
+      game.addSpectator(data.username, socket);
+      socket.emit('spectateJoin', {
+        code: game.getCode(),
+        host: game.getHostName(),
+      });
+      socket.emit('spectateState', game.stateForSpectator());
+    });
+
+    socket.on('spectatorExit', () => {
+      for (const room of rooms) room.removeSpectatorBySocket(socket.id);
+    });
+
     socket.on('disconnect', () => {
+      for (const room of rooms) room.removeSpectatorBySocket(socket.id);
+
       const game = findRoomBySocket(socket.id);
       if (!game) return;
       const player = game.findPlayerBySocket(socket.id);

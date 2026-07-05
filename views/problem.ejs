@@ -369,9 +369,13 @@ if (isVJudge) testcases = [];
   });
 
   var lastSubmitted = '';
+  var submitLocked = false;
 
   function submit_code() {
+    if (submitLocked) return false;
     if (!$('#submit_code input[name=answer]').val().trim() && !editor.getValue().trim()) return false;
+    submitLocked = true;
+    $('#submit_code button[type=submit]').addClass('disabled loading');
     $('#submit_code input[name=language]').val($('#languages-menu .item.active').data('value'));
     lastSubmitted = editor.getValue();
     $('#submit_code input[name=code]').val(editor.getValue());
@@ -396,7 +400,11 @@ if (isVJudge) testcases = [];
 
 <% } else { %>
   <script>
+  var submitLocked = false;
   function submit_code() {
+    if (submitLocked) return false;
+    submitLocked = true;
+    $('#submit_code button[type=submit]').addClass('disabled loading');
     var a = [];
     for (var i = 0; i < cases.length; i++) {
       a.push({
@@ -405,6 +413,7 @@ if (isVJudge) testcases = [];
       });
     }
     $('#answer_by_editor').val(JSON.stringify(a));
+    return true;
   }
   </script>
 <% } %>

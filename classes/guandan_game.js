@@ -1,8 +1,12 @@
 const BASE_RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-const STRAIGHT_RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+// For sequential patterns (straights, 三连对, 二连三) the Ace can act either
+// as the card below 2 (forming the lowest run, A-2-3-4-5) or in its normal
+// spot above King (10-J-Q-K-A, the highest run) - never both ends wrapping
+// anywhere else. Position 0 and 13 are both "A"; everything else appears once.
+const STRAIGHT_SEQUENCE = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const SUITS = ['S', 'H', 'D', 'C'];
 const SUIT_LABELS = { S: '♠', H: '♥', D: '♦', C: '♣', J: '' };
-const LEVEL_ADVANCE = { double: 3, oneThree: 2, oneFour: 1 };
+const LEVEL_ADVANCE = { double: 4, oneThree: 2, oneFour: 1 };
 const RATING_DELTA = { double: 200, oneThree: 100, oneFour: 50 };
 const AWAY_AUTO_ACTION_MS = 20000;
 
@@ -137,14 +141,32 @@ class GuandanRules {
   }
 
   static evaluate(cards, levelRank) {
-    if (!Array.isArray(cards) || cards.length === 0) return null;
+    const options = GuandanRules.evaluateOptions(cards, levelRank);
+    return options[options.length - 1] || null;
+  }
+
+  // Returns every distinct legal interpretation of `cards` (e.g. a red-heart
+  // wildcard completing a straight at two different high cards, or a natural
+  // straight flush that could also be declared as a plain straight), sorted
+  // weakest-first. When more than one option exists the caller must let the
+  // player pick, since which one they want is a real strategic choice.
+  static evaluateOptions(cards, levelRank) {
+    if (!Array.isArray(cards) || cards.length === 0) return [];
     const candidates = [];
     const assignments = GuandanRules.enumerateWildAssignments(cards, levelRank);
     for (const assigned of assignments) {
       candidates.push(...GuandanRules.evaluateAssigned(assigned, cards, levelRank));
     }
-    candidates.sort((a, b) => GuandanRules.compareSameOrPower(a, b));
-    return candidates[candidates.length - 1] || null;
+    const seen = new Set();
+    const options = [];
+    for (const candidate of candidates) {
+      const key = `${candidate.type}|${candidate.size}|${candidate.primary}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      options.push(candidate);
+    }
+    options.sort((a, b) => GuandanRules.compareSameOrPower(a, b));
+    return options;
   }
 
   static evaluateAssigned(assigned, originalCards, levelRank) {
@@ -238,11 +260,12 @@ class GuandanRules {
 
     if (len === 6 && !hasJoker && counts.length === 3 && counts.every((entry) => entry[1] === 2)) {
       const pairRanks = counts.map((entry) => entry[0]);
-      if (GuandanRules.isConsecutiveRanks(pairRanks)) {
+      const high = GuandanRules._matchSequence(pairRanks);
+      if (high !== null) {
         candidates.push({
           type: 'consecutivePairs',
           size: 6,
-          primary: Math.max(...pairRanks.map((rank) => GuandanRules.baseOrder(rank))),
+          primary: high,
           title: '三连对',
         });
       }
@@ -250,35 +273,68 @@ class GuandanRules {
 
     if (len === 6 && !hasJoker && counts.length === 2 && counts.every((entry) => entry[1] === 3)) {
       const tripleRanks = counts.map((entry) => entry[0]);
-      if (GuandanRules.isConsecutiveRanks(tripleRanks)) {
+      const high = GuandanRules._matchSequence(tripleRanks);
+      if (high !== null) {
         candidates.push({
           type: 'consecutiveTriples',
           size: 6,
-          primary: Math.max(...tripleRanks.map((rank) => GuandanRules.baseOrder(rank))),
+          primary: high,
           title: '二连三',
         });
       }
     }
 
+    // Attach a human-readable rank breakdown to every candidate, used to show
+    // the player what each ambiguous interpretation actually looks like.
+    const uniqueRanks = Array.from(new Set(ranks));
+    let displayRanks = uniqueRanks.slice().sort((a, b) => BASE_RANKS.indexOf(a) - BASE_RANKS.indexOf(b));
+    if (uniqueRanks.length > 1 && uniqueRanks.includes('A')) {
+      // If treating the Ace as the low end (A-2-3-4-5 style) makes this a
+      // tight run, display it that way instead of showing the Ace last.
+      const posAceLow = (r) => (r === 'A' ? 0 : STRAIGHT_SEQUENCE.indexOf(r));
+      const sortedPositions = uniqueRanks.map(posAceLow).sort((a, b) => a - b);
+      const isTightRun = sortedPositions[sortedPositions.length - 1] - sortedPositions[0] === sortedPositions.length - 1;
+      if (isTightRun) {
+        displayRanks = uniqueRanks.slice().sort((a, b) => posAceLow(a) - posAceLow(b));
+      }
+    }
+    for (const candidate of candidates) candidate.assignedRanks = displayRanks;
+
     return candidates;
   }
 
+  // A straight is 5 distinct, sequential ranks (2 through A, no wraparound).
+  // 2 is a normal low card here and CAN be the bottom of a straight (2-3-4-5-6
+  // is the lowest one); only jokers are never part of a straight.
   static isStraightRanks(ranks) {
     if (new Set(ranks).size !== ranks.length) return false;
-    return GuandanRules.isConsecutiveRanks(ranks) && !ranks.includes('2') && !ranks.includes('SJ') && !ranks.includes('BJ');
+    return GuandanRules.isConsecutiveRanks(ranks) && !ranks.includes('SJ') && !ranks.includes('BJ');
+  }
+
+  // Returns the highest STRAIGHT_SEQUENCE position of a valid consecutive
+  // assignment for `ranks`, trying both roles for an Ace if present, or null
+  // if no assignment is consecutive.
+  static _matchSequence(ranks) {
+    if (ranks.some((rank) => !STRAIGHT_SEQUENCE.includes(rank))) return null;
+    const aceChoices = ranks.includes('A') ? [0, 13] : [null];
+    for (const aceChoice of aceChoices) {
+      const positions = ranks.map((rank) => (rank === 'A' ? aceChoice : STRAIGHT_SEQUENCE.indexOf(rank)));
+      const sorted = positions.slice().sort((a, b) => a - b);
+      let ok = true;
+      for (let i = 1; i < sorted.length; i++) {
+        if (sorted[i] !== sorted[i - 1] + 1) { ok = false; break; }
+      }
+      if (ok) return Math.max(...positions);
+    }
+    return null;
   }
 
   static isConsecutiveRanks(ranks) {
-    if (ranks.some((rank) => !STRAIGHT_RANKS.includes(rank))) return false;
-    const indexes = ranks.map((rank) => STRAIGHT_RANKS.indexOf(rank)).sort((a, b) => a - b);
-    for (let i = 1; i < indexes.length; i++) {
-      if (indexes[i] !== indexes[i - 1] + 1) return false;
-    }
-    return true;
+    return GuandanRules._matchSequence(ranks) !== null;
   }
 
   static straightHigh(ranks) {
-    return Math.max(...ranks.map((rank) => STRAIGHT_RANKS.indexOf(rank)));
+    return GuandanRules._matchSequence(ranks);
   }
 
   static compareSameOrPower(a, b) {
@@ -319,6 +375,7 @@ class GuandanGame {
     this.code = code;
     this.host = host;
     this.players = [];
+    this.spectators = [];
     this.phase = 'lobby';
     this.handNumber = 0;
     this.teamLevels = ['2', '2'];
@@ -382,9 +439,25 @@ class GuandanGame {
     return this.players.find((p) => p.socket && p.socket.id === socketId) || null;
   }
 
+  addSpectator(username, socket) {
+    const spectator = { username, socket };
+    this.spectators.push(spectator);
+    return spectator;
+  }
+
+  removeSpectatorBySocket(socketId) {
+    this.spectators = this.spectators.filter((s) => !s.socket || s.socket.id !== socketId);
+  }
+
   emitPlayers(eventName, payload) {
     for (const player of this.players) {
       if (player.socket) player.socket.emit(eventName, payload);
+    }
+  }
+
+  emitSpectators(eventName, payload) {
+    for (const spectator of this.spectators) {
+      if (spectator.socket) spectator.socket.emit(eventName, payload);
     }
   }
 
@@ -392,6 +465,7 @@ class GuandanGame {
     this.logs.push(message);
     if (this.logs.length > 200) this.logs.shift();
     this.emitPlayers('gameLog', { message });
+    this.emitSpectators('gameLog', { message });
   }
 
   startGame() {
@@ -571,13 +645,13 @@ class GuandanGame {
     this.broadcastLog(`${this.players[this.currentTurn].username} leads after tribute.`);
   }
 
-  playCards(socketId, cardIds) {
+  playCards(socketId, cardIds, choice) {
     const player = this.findPlayerBySocket(socketId);
     if (!player) return { ok: false, message: 'Unknown player.' };
-    return this.playCardsForPlayer(player, cardIds);
+    return this.playCardsForPlayer(player, cardIds, choice);
   }
 
-  playCardsForPlayer(player, cardIds) {
+  playCardsForPlayer(player, cardIds, choice) {
     if (this.phase !== 'playing') return { ok: false, message: 'Not in playing phase.' };
     if (player.seat !== this.currentTurn) return { ok: false, message: 'It is not your turn.' };
     if (player.finishedRank) return { ok: false, message: 'You already finished.' };
@@ -593,8 +667,29 @@ class GuandanGame {
       selected.push(card);
     }
 
-    const hand = GuandanRules.evaluate(selected, this.currentLevel);
-    if (!hand) return { ok: false, message: 'Illegal card pattern.' };
+    const options = GuandanRules.evaluateOptions(selected, this.currentLevel);
+    if (!options.length) return { ok: false, message: 'Illegal card pattern.' };
+
+    let hand;
+    if (options.length === 1) {
+      hand = options[0];
+    } else if (choice) {
+      hand = options.find((o) => o.type === choice.type && o.size === choice.size && o.primary === choice.primary);
+      if (!hand) return { ok: false, message: 'Invalid choice.' };
+    } else {
+      // A red-heart wildcard (or a natural straight flush) can legally form
+      // more than one distinct pattern with the exact same selected cards -
+      // e.g. 3,4,5,6 + a wild 8 could be a 4-5-6-7 or a 5-6-7-8 straight.
+      // Which one to use is a real strategic choice, so ask the player.
+      return {
+        ok: false,
+        needsChoice: true,
+        options: options.map((o) => ({
+          type: o.type, size: o.size, primary: o.primary, title: o.title, assignedRanks: o.assignedRanks,
+        })),
+      };
+    }
+
     if (!GuandanRules.canBeat(hand, this.lastPlay && this.lastPlay.hand)) return { ok: false, message: 'This play cannot beat the previous play.' };
 
     for (const id of cardIds) this.removeCard(player, id);
@@ -609,7 +704,14 @@ class GuandanGame {
 
     if (player.hand.length === 0) {
       this.markFinished(player);
-      if (this.finishOrder.length >= 3) {
+      if (this.finishOrder.length === 2 && this.isDoubleUp()) {
+        // Both members of a team finished 1st and 2nd: the result (双上) is
+        // already the best possible outcome, so end the hand immediately
+        // instead of making the other team keep playing it out.
+        for (const p of this.players) {
+          if (!p.finishedRank) this.markFinished(p);
+        }
+      } else if (this.finishOrder.length >= 3) {
         const remaining = this.players.find((p) => !p.finishedRank);
         if (remaining) this.markFinished(remaining);
       }
@@ -666,6 +768,13 @@ class GuandanGame {
     player.finishedRank = this.finishOrder.length + 1;
     this.finishOrder.push(player.seat);
     this.broadcastLog(`${player.username} finished #${player.finishedRank}.`);
+  }
+
+  isDoubleUp() {
+    if (this.finishOrder.length < 2) return false;
+    const firstSeat = this.finishOrder[0];
+    const secondSeat = this.finishOrder[1];
+    return this.players[firstSeat].team === this.players[secondSeat].team;
   }
 
   nextUnfinishedFrom(seat) {
@@ -779,6 +888,7 @@ class GuandanGame {
     for (const player of this.players) {
       if (player.socket) player.socket.emit('state', this.stateFor(player));
     }
+    this.emitSpectators('spectateState', this.stateForSpectator());
     this.scheduleAwayAutoAction();
   }
 
@@ -918,6 +1028,41 @@ class GuandanGame {
       handOverReadyCount: this.phase === 'handOver' ? this.handOverReady.size : 0,
       handOverRequiredCount: this.phase === 'handOver' ? this.players.filter((p) => !p.away).length : 0,
       selfReadyForNextHand: this.phase === 'handOver' && this.handOverReady.has(viewer.seat),
+      gameOver: this.gameOver,
+    };
+  }
+
+  // Spectators are not participants: they see every player's hand (for
+  // teaching/review purposes) and never get an action prompt of their own.
+  stateForSpectator() {
+    return {
+      code: this.code,
+      phase: this.phase,
+      handNumber: this.handNumber,
+      currentLevel: this.currentLevel,
+      teamLevels: this.teamLevels.slice(),
+      leadingTeam: this.leadingTeam,
+      currentTurn: this.currentTurn,
+      currentTurnName: this.currentTurn === null ? null : this.players[this.currentTurn].username,
+      lastPlay: this.lastPlay ? {
+        username: this.lastPlay.username,
+        cards: this.lastPlay.cards,
+        title: this.lastPlay.hand.title,
+      } : null,
+      finishOrder: this.finishOrder.map((seat) => ({
+        username: this.players[seat].username,
+        seat,
+        team: this.players[seat].team,
+      })),
+      players: this.players.map((p) => ({
+        username: p.username,
+        seat: p.seat,
+        team: p.team,
+        cardCount: p.hand.length,
+        away: p.away,
+        finishedRank: p.finishedRank,
+        hand: p.hand.map(cloneCard),
+      })),
       gameOver: this.gameOver,
     };
   }

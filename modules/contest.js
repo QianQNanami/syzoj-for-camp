@@ -6,6 +6,8 @@ let JudgeState = syzoj.model('judge_state');
 let User = syzoj.model('user');
 let UserTeacher = syzoj.model('user-teacher');
 let Teacher = syzoj.model('teacher');
+let UserGroup = syzoj.model('user-group');
+let ContestGroup = syzoj.model('contest-group');
 
 const jwt = require('jsonwebtoken');
 const Email = require('../libs/email');
@@ -168,17 +170,41 @@ async function buildTeacherReports(contest) {
     teacherStudents[relation.teacher_id].push(relation.user_id);
   }
 
+  // Contests can be restricted to specific groups. A student who isn't in
+  // any of those groups AND never submitted anything has nothing to do with
+  // this contest, so skip them entirely instead of listing them as "未参赛".
+  const contestGroupIds = (await ContestGroup.find({ where: { contest_id: contest.id } })).map(cg => cg.group_id);
+  let studentGroupIds = {};
+  if (contestGroupIds.length > 0) {
+    const allStudentIds = Array.from(new Set(relations.map(relation => relation.user_id)));
+    const userGroups = allStudentIds.length
+      ? await UserGroup.find({ where: { user_id: TypeORM.In(allStudentIds) } })
+      : [];
+    for (const userGroup of userGroups) {
+      if (!studentGroupIds[userGroup.user_id]) studentGroupIds[userGroup.user_id] = new Set();
+      studentGroupIds[userGroup.user_id].add(userGroup.group_id);
+    }
+  }
+
   const reports = [];
   for (let teacherId of Object.keys(teacherStudents)) {
     const teacher = await Teacher.findById(parseInt(teacherId));
     if (!teacher) continue;
 
-    const students = [];
+    let students = [];
     for (let studentId of teacherStudents[teacherId]) {
       const student = await User.findById(studentId);
       if (student) students.push(student);
     }
     students.sort((a, b) => String(a.username || '').localeCompare(String(b.username || '')));
+
+    if (contestGroupIds.length > 0) {
+      students = students.filter(student => {
+        if (scoreData.byUserId[student.id]) return true;
+        const groups = studentGroupIds[student.id];
+        return !!groups && contestGroupIds.some(groupId => groups.has(groupId));
+      });
+    }
 
     if (!students.some(student => scoreData.byUserId[student.id])) continue;
     reports.push({
