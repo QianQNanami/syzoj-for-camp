@@ -54,6 +54,33 @@
     <div class="ui center aligned basic segment">
         <button id="hostButton" class="ui large primary button">Host Game</button>
         <button id="joinButton" class="ui large secondary button">Join Game</button>
+        <button id="spectateButton" class="ui large basic button">观战</button>
+    </div>
+</div>
+
+<div id="pokerSpectate" style="display: none;">
+    <div class="ui grid">
+        <div class="four wide column">
+            <div class="ui segment">
+                <h4 class="ui dividing header">观战中</h4>
+                <div id="spectateRoomInfo" class="ui relaxed list"></div>
+                <button class="ui black fluid button" onclick="exitSpectate()" style="margin-top: 10px;">离开观战</button>
+                <h4 class="ui dividing header">Game Log</h4>
+                <div id="spectateLog" style="height: 250px; overflow-y: auto; font-family: monospace; font-size: 0.9em; padding: 5px; background: #f9f9f9; border: 1px solid #ddd;"></div>
+            </div>
+        </div>
+
+        <div class="twelve wide column">
+            <div class="ui segment">
+                <h3 class="ui header" id="spectateTableTitle"></h3>
+                <div id="spectateCommunityCards" class="ui basic segment center aligned"></div>
+            </div>
+
+            <div class="ui segment">
+                <h4 class="ui dividing header">Players</h4>
+                <div id="spectatePlayerCards" class="ui cards"></div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -152,6 +179,22 @@
     </div>
 </div>
 
+<div class="ui modal" id="spectateModal">
+    <div class="header">观战</div>
+    <div class="content">
+        <div class="ui form">
+            <div class="field">
+                <label>房间号</label>
+                <input type="text" id="spectate-code-field" placeholder="4位房间号">
+            </div>
+            <button onclick="beginSpectate()" class="ui primary button">进入观战</button>
+        </div>
+    </div>
+    <div class="actions">
+        <div class="ui cancel button">关闭</div>
+    </div>
+</div>
+
 <div class="ui modal" id="betModal">
     <div class="header">Place Bet</div>
     <div class="content">
@@ -218,6 +261,7 @@ var currentUser = "<%= user.username %>";
 $(document).ready(function () {
     $('#hostButton').click(function() { $('#hostModal').modal('show'); });
     $('#joinButton').click(function() { $('#joinModal').modal('show'); });
+    $('#spectateButton').click(function() { $('#spectateModal').modal('show'); });
 });
 
 socket.on('playerDisconnected', function (data) {
@@ -354,9 +398,53 @@ socket.on('endHand', function (data) {
 });
 
 socket.on('gameLog', function (data) {
-    const logDiv = $('#gameLog');
-    logDiv.append('<div>' + data.message + '</div>');
-    logDiv.scrollTop(logDiv[0].scrollHeight);
+    ['#gameLog', '#spectateLog'].forEach(function(sel) {
+        var logDiv = $(sel);
+        if (!logDiv.length) return;
+        logDiv.append('<div>' + data.message + '</div>');
+        logDiv.scrollTop(logDiv[0].scrollHeight);
+    });
+});
+
+socket.on('spectateJoin', function (data) {
+    if (!data) {
+        alert('房间不存在。');
+        return;
+    }
+    $('#spectateModal').modal('hide');
+    $('#mainContent').hide();
+    $('#gameDiv').hide();
+    $('#pokerSpectate').show();
+    $('#spectateRoomInfo').html(
+        '<div class="item">房间：<code>' + data.code + '</code></div>' +
+        '<div class="item">房主：' + data.host + '</div>'
+    );
+});
+
+socket.on('spectateState', function (data) {
+    if (data.community != undefined) $('#spectateCommunityCards').html(data.community.map(renderCard).join(''));
+    else $('#spectateCommunityCards').empty();
+
+    let turnPlayer = data.players.find(p => p.status === 'Their Turn');
+    let turnText = turnPlayer ? (' | <span style="color: #21ba45;">Current Turn: ' + turnPlayer.username + '</span>') : '';
+    $('#spectateTableTitle').html('Round ' + data.round + ' | ' + data.stage + ' | Top Bet: $' + data.topBet + ' | Pot: $' + data.pot + turnText);
+
+    let sortedPlayers = [...data.players];
+    const currentStageBets = data.bets && data.bets.length > 0 ? data.bets[data.bets.length - 1] : [];
+    if (currentStageBets.length > 0) {
+        let bettorOrder = currentStageBets.map(b => b.player);
+        sortedPlayers.sort((a, b) => {
+            let indexA = bettorOrder.indexOf(a.username);
+            let indexB = bettorOrder.indexOf(b.username);
+            if (indexA === -1 && indexB === -1) return 0;
+            if (indexA === -1) return 1;
+            if (indexB === -1) return -1;
+            return indexA - indexB;
+        });
+    }
+    $('#spectatePlayerCards').html(sortedPlayers.map(function(p) {
+        return renderOpponent(p.username, p, data.bets);
+    }).join(''));
 });
 
 // Game Actions
@@ -364,6 +452,12 @@ function beginHost() { socket.emit('host', { username: currentUser }); }
 function joinRoom() { socket.emit('join', { code: $('#code-field').val(), username: currentUser }); }
 function startGame(code) { socket.emit('startGame', { code: code }); }
 function playNext() { socket.emit('startNextRound', {}); }
+function beginSpectate() { socket.emit('spectate', { code: $('#spectate-code-field').val(), username: currentUser }); }
+function exitSpectate() {
+    socket.emit('spectatorExit', {});
+    $('#pokerSpectate').hide();
+    $('#mainContent').show();
+}
 function fold() { socket.emit('moveMade', { move: 'fold', bet: 'Fold' }); }
 function call() { socket.emit('moveMade', { move: 'call', bet: 'Call' }); }
 function check() { socket.emit('moveMade', { move: 'check', bet: 'Check' }); }

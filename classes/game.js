@@ -7,6 +7,7 @@ const Game = function (name, host) {
   this.deck = new Deck();
   this.host = host;
   this.players = [];
+  this.spectators = [];
   this.status = 0;
   this.cardsPerPlayer = 2;
   this.currentlyPlayed = 0;
@@ -189,7 +190,9 @@ const Game = function (name, host) {
     this.rerender();
   };
 
-  this.rerender = () => {
+  // The state any observer (player or spectator) is allowed to see: nobody's
+  // hole cards unless revealed, but everything about bets/pot/community/stage.
+  this.getPublicState = () => {
     let playersData = [];
     for (let i = 0; i < this.getNumPlayers(); i++) {
       playersData.push({
@@ -209,21 +212,29 @@ const Game = function (name, host) {
         skillUsed: this.players[i].skillUsed,
       });
     }
-    for (let pn = 0; pn < this.getNumPlayers(); pn++) {
-      let visibleBets = this.roundData.bets;
-      if (this.smokeScreenActive) {
-        visibleBets = this.roundData.bets.map(stage => stage.map(b => ({ ...b, bet: b.bet === 'Fold' ? 'Fold' : '???' })));
-      }
 
-      this.players[pn].emit('rerender', {
-        community: this.community,
-        topBet: this.smokeScreenActive ? '???' : this.getCurrentTopBet(),
-        bets: visibleBets,
+    let visibleBets = this.roundData.bets;
+    if (this.smokeScreenActive) {
+      visibleBets = this.roundData.bets.map(stage => stage.map(b => ({ ...b, bet: b.bet === 'Fold' ? 'Fold' : '???' })));
+    }
+
+    return {
+      community: this.community,
+      topBet: this.smokeScreenActive ? '???' : this.getCurrentTopBet(),
+      bets: visibleBets,
+      round: this.roundNum,
+      stage: this.getStageName(),
+      pot: this.smokeScreenActive ? '???' : this.getCurrentPot(),
+      players: playersData,
+      roundInProgress: this.roundInProgress,
+    };
+  };
+
+  this.rerender = () => {
+    const publicState = this.getPublicState();
+    for (let pn = 0; pn < this.getNumPlayers(); pn++) {
+      this.players[pn].emit('rerender', Object.assign({}, publicState, {
         username: this.players[pn].getUsername(),
-        round: this.roundNum,
-        stage: this.getStageName(),
-        pot: this.smokeScreenActive ? '???' : this.getCurrentPot(),
-        players: playersData,
         myMoney: this.players[pn].getMoney(),
         myBet: this.getPlayerBetInStage(this.players[pn]),
         myStatus: this.players[pn].getStatus(),
@@ -231,12 +242,12 @@ const Game = function (name, host) {
         mySpirituality: this.players[pn].spirituality,
         mySkill: this.players[pn].assignedSkill,
         skillUsed: this.players[pn].skillUsed,
-        roundInProgress: this.roundInProgress,
         buyIns: this.players[pn].buyIns,
         away: this.players[pn].away,
         waiting: this.players[pn].waiting,
-      });
+      }));
     }
+    this.emitSpectators('spectateState', publicState);
   };
 
   this.getCurrentPot = () => {
@@ -956,6 +967,22 @@ const Game = function (name, host) {
     }
   };
 
+  this.emitSpectators = (eventName, payload) => {
+    for (const spectator of this.spectators) {
+      if (spectator.socket) spectator.socket.emit(eventName, payload);
+    }
+  };
+
+  this.addSpectator = (username, socket) => {
+    const spectator = { username, socket };
+    this.spectators.push(spectator);
+    return spectator;
+  };
+
+  this.removeSpectatorBySocket = (socketId) => {
+    this.spectators = this.spectators.filter((s) => !s.socket || s.socket.id !== socketId);
+  };
+
   this.broadcastLog = (message) => {
     let msg = message;
     if (this.smokeScreenActive) {
@@ -963,6 +990,7 @@ const Game = function (name, host) {
       msg = msg.replace(/\$\d+(\.\d+)?/g, '$???');
     }
     this.emitPlayers('gameLog', { message: msg });
+    this.emitSpectators('gameLog', { message: msg });
   };
 
   this.findPlayer = (socketId) => {

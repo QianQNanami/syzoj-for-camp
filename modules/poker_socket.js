@@ -120,6 +120,25 @@ function initializePoker(io) {
             }
         });
 
+        socket.on('spectate', (data) => {
+            const game = data && rooms.find((r) => r.getCode() === data.code);
+            if (!game || !data.username || data.username.length > 12) {
+                socket.emit('spectateJoin', undefined);
+                return;
+            }
+
+            game.addSpectator(data.username, socket);
+            socket.emit('spectateJoin', {
+                code: game.getCode(),
+                host: game.getHostName(),
+            });
+            socket.emit('spectateState', game.getPublicState());
+        });
+
+        socket.on('spectatorExit', () => {
+            for (const room of rooms) room.removeSpectatorBySocket(socket.id);
+        });
+
         socket.on('playerExit', () => {
             const game = rooms.find(r => r.findPlayer(socket.id).socket.id === socket.id);
             if (game) {
@@ -143,6 +162,8 @@ function initializePoker(io) {
         });
 
         socket.on('disconnect', () => {
+            for (const room of rooms) room.removeSpectatorBySocket(socket.id);
+
             const game = rooms.find(r => r.findPlayer(socket.id).socket.id === socket.id);
             if (game) {
                 const player = game.findPlayer(socket.id);
