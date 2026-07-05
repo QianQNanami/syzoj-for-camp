@@ -19,6 +19,7 @@ const RANK_TOTALS = {};
 for (const rank of BASE_RANKS) RANK_TOTALS[rank] = 8;
 RANK_TOTALS.SJ = 2;
 RANK_TOTALS.BJ = 2;
+const CARD_COUNTER_USER_ID = 615;
 
 function nextRank(rank, steps) {
   let idx = BASE_RANKS.indexOf(rank);
@@ -421,11 +422,12 @@ class GuandanGame {
     return this.players.map((p) => p.username);
   }
 
-  addPlayer(username, socket) {
+  addPlayer(username, socket, userId) {
     if (this.players.length >= 4 || this.phase !== 'lobby') return null;
     const player = {
       username,
       socket,
+      userId,
       seat: this.players.length,
       team: this.players.length % 2,
       hand: [],
@@ -1013,7 +1015,7 @@ class GuandanGame {
       currentTurn: this.currentTurn,
       currentTurnName: this.currentTurn === null ? null : this.players[this.currentTurn].username,
       canAct: this.currentTurn === viewer.seat,
-      cardCounter: this.cardCounterFor(viewer),
+      cardCounter: viewer.userId === CARD_COUNTER_USER_ID ? this.cardCounterFor(viewer) : null,
       lastPlay: this.lastPlay ? {
         username: this.lastPlay.username,
         cards: this.lastPlay.cards,

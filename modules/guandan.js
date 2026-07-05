@@ -9,7 +9,8 @@ app.get('/guandan', async (req, res) => {
     }
 
     res.render('guandan', {
-      title: '淮安OI'
+      title: '淮安OI',
+      showCardCounter: res.locals.user.id === 615
     });
   } catch (e) {
     syzoj.log(e);

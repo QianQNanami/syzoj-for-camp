@@ -47,7 +47,7 @@ function initializeGuandan(io) {
       const code = makeRoomCode();
       const game = new GuandanGame(code, data.username);
       rooms.push(game);
-      game.addPlayer(data.username, socket);
+      game.addPlayer(data.username, socket, data.userId);
       socket.emit('hostRoom', {
         code,
         host: game.getHostName(),
@@ -79,7 +79,7 @@ function initializeGuandan(io) {
         return;
       }
 
-      const player = game.addPlayer(data.username, socket);
+      const player = game.addPlayer(data.username, socket, data.userId);
       if (!player) {
         socket.emit('joinRoom', undefined);
         return;

@@ -219,10 +219,12 @@
         <div id="finishOrder" class="gd-finish"></div>
       </div>
 
+      <% if (showCardCounter) { %>
       <div class="ui segment">
         <h4 class="ui dividing header">记牌器</h4>
         <div id="cardCounter" class="gd-counter"></div>
       </div>
+      <% } %>
 
       <div class="ui segment">
         <h4 class="ui dividing header">日志</h4>
@@ -314,6 +316,7 @@
 <script>
 var socket = io('/guandan_socket');
 var currentUser = "<%= user.username %>";
+var currentUserId = <%= user.id %>;
 var currentState = null;
 var selectedCards = new Set();
 var hostedCode = null;
@@ -339,11 +342,11 @@ function escapeHtml(text) {
 }
 
 function beginHost() {
-  socket.emit('host', { username: currentUser });
+  socket.emit('host', { username: currentUser, userId: currentUserId });
 }
 
 function joinRoom() {
-  socket.emit('join', { code: $('#code-field').val(), username: currentUser });
+  socket.emit('join', { code: $('#code-field').val(), username: currentUser, userId: currentUserId });
 }
 
 function beginSpectate() {
