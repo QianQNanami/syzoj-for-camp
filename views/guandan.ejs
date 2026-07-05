@@ -114,7 +114,44 @@
 .gd-counter .label {
   margin: 2px;
 }
+.gd-turn-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gd-turn-flash.active {
+  animation: gd-turn-flash-glow 0.8s ease-in-out 3;
+}
+.gd-turn-flash-text {
+  font-size: 3em;
+  font-weight: 800;
+  color: #fbbd08;
+  text-shadow: 0 0 12px rgba(0,0,0,0.6);
+  opacity: 0;
+}
+.gd-turn-flash.active .gd-turn-flash-text {
+  animation: gd-turn-flash-text 2.4s ease-out 1;
+}
+@keyframes gd-turn-flash-glow {
+  0% { box-shadow: inset 0 0 0 0 rgba(251,189,8,0); opacity: 0; }
+  20% { box-shadow: inset 0 0 80px 40px rgba(251,189,8,0.85); opacity: 1; }
+  100% { box-shadow: inset 0 0 0 0 rgba(251,189,8,0); opacity: 0; }
+}
+@keyframes gd-turn-flash-text {
+  0% { opacity: 0; transform: scale(0.8); }
+  15% { opacity: 1; transform: scale(1.05); }
+  25% { transform: scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
 </style>
+
+<div id="turnFlash" class="gd-turn-flash"><div class="gd-turn-flash-text">轮到你了！</div></div>
 
 <div id="guandanLobby" class="ui segment">
   <h2 class="ui header">淮安OI</h2>
@@ -280,6 +317,7 @@ var currentUser = "<%= user.username %>";
 var currentState = null;
 var selectedCards = new Set();
 var hostedCode = null;
+var wasCanAct = false;
 var handOrder = [];
 var handOrderHandNumber = null;
 var spectatorState = null;
@@ -453,8 +491,23 @@ function phaseText(phase) {
   return phase;
 }
 
+function maybeFlashTurn() {
+  var isMyTurn = !!currentState.canAct && currentState.phase !== 'handOver' && currentState.phase !== 'gameOver';
+  if (isMyTurn && !wasCanAct) triggerTurnFlash();
+  wasCanAct = isMyTurn;
+}
+
+function triggerTurnFlash() {
+  var el = document.getElementById('turnFlash');
+  if (!el) return;
+  el.classList.remove('active');
+  void el.offsetWidth; // force reflow so the animation restarts
+  el.classList.add('active');
+}
+
 function renderState() {
   if (!currentState) return;
+  maybeFlashTurn();
   $('#roomInfo').html(
     '<div class="item">房间：<code>' + escapeHtml(currentState.code) + '</code></div>' +
     '<div class="item">第 ' + currentState.handNumber + ' 副，级牌：<b>' + escapeHtml(currentState.currentLevel) + '</b></div>' +
