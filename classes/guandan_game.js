@@ -429,6 +429,7 @@ class GuandanGame {
     this.pendingTributes = [];
     this.pendingReturns = [];
     this.tributeRecipients = [];
+    this.leadAfterTribute = null;
     this.lastTributeResults = {};
     this.handOverReady = new Set();
     this.awayTimer = null;
@@ -558,6 +559,7 @@ class GuandanGame {
     this.pendingTributes = [];
     this.pendingReturns = [];
     this.tributeRecipients = [];
+    this.leadAfterTribute = null;
     this.lastTributeResults = {};
     this.handOverReady = new Set();
     this.roundInProgress = true;
@@ -606,24 +608,37 @@ class GuandanGame {
     const fourth = order[3];
     const firstTeam = this.players[first].team;
     const secondTeam = this.players[second].team;
+    const thirdTeam = this.players[third].team;
     const givers = [];
 
     if (firstTeam === secondTeam) {
-      givers.push({ from: third, to: null }, { from: fourth, to: null });
-      this.tributeRecipients = [first, second];
+      // 双上: 1st and 2nd place are teammates. No tribute at all this hand.
+      this.phase = 'playing';
+      this.currentTurn = first;
+      this.tributeRecipients = [];
+      this.broadcastLog('Double-up: no tribute this hand.');
+      return;
+    } else if (firstTeam === thirdTeam) {
+      // 双下: 1st and 3rd are teammates, so the other team (2nd and 4th) both tribute.
+      // The bigger tribute card goes to 1st, the smaller to 3rd (decided in applyTributes).
+      givers.push({ from: second, to: null }, { from: fourth, to: null });
+      this.tributeRecipients = [first, third];
     } else {
+      // 单下: 1st and 4th are teammates. Only 4th place (regardless of team) tributes to 1st.
       givers.push({ from: fourth, to: first });
       this.tributeRecipients = [first];
     }
 
-    const antiTribute = givers.some((item) => {
-      return this.players[item.from].hand.filter((card) => card.rank === 'BJ').length >= 2;
-    });
+    // Anti-tribute (抗贡): skipped if a single giver holds both big jokers, or - in
+    // the two-giver case - the givers collectively hold one big joker each.
+    const totalBigJokers = givers.reduce((sum, item) => {
+      return sum + this.players[item.from].hand.filter((card) => card.rank === 'BJ').length;
+    }, 0);
 
-    if (antiTribute) {
+    if (totalBigJokers >= 2) {
       this.phase = 'playing';
       this.currentTurn = first;
-      this.broadcastLog('Anti-tribute: tribute side has two big jokers. Tribute is skipped.');
+      this.broadcastLog('Anti-tribute: tribute side holds both big jokers. Tribute is skipped.');
       return;
     }
 
@@ -665,12 +680,15 @@ class GuandanGame {
         const cardB = this.players[b.from].hand.find((card) => card.id === b.cardId);
         const rankDiff = GuandanRules.rankOrder(cardB.rank, this.currentLevel) - GuandanRules.rankOrder(cardA.rank, this.currentLevel);
         if (rankDiff !== 0) return rankDiff;
-        return cardB.id.localeCompare(cardA.id);
+        return a.from - b.from; // tie: clockwise seat order
       });
       sortedTributes.forEach((tribute, index) => {
         tribute.to = this.tributeRecipients[index];
       });
     }
+    // Whoever gave the bigger tribute card (the sole giver in the single-tribute
+    // case) leads the first trick once tributes and returns are both done.
+    this.leadAfterTribute = sortedTributes[0].from;
 
     const tributeDescs = [];
     for (const tribute of sortedTributes) {
@@ -721,8 +739,8 @@ class GuandanGame {
     }
     for (const player of this.players) GuandanRules.sortCards(player.hand, this.currentLevel);
     this.phase = 'playing';
-    // Whoever received the smaller tribute card leads (the sole recipient in the single-tribute case).
-    this.currentTurn = this.tributeRecipients[this.tributeRecipients.length - 1];
+    // The player who gave the bigger tribute card leads, not the recipient.
+    this.currentTurn = this.leadAfterTribute;
     this.broadcastLog(`${this.players[this.currentTurn].username} leads after tribute.`);
     returnDescs.push(`${this.players[this.currentTurn].username} 进贡后领出`);
     this.recordReplayStep('return', returnDescs.join('；'));
@@ -1126,7 +1144,7 @@ class GuandanGame {
         finishedRank: viewer.finishedRank,
       },
       tribute: tribute ? {
-        to: tribute.to === null ? '头游/二游' : this.players[tribute.to].username,
+        to: tribute.to === null ? '头游/三游' : this.players[tribute.to].username,
         eligible: viewer.hand
           .filter((card) => GuandanRules.isTributeEligible(card, this.currentLevel))
           .map((card) => card.id),

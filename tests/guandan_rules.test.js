@@ -229,19 +229,68 @@ function testDoubleTributeAssignment() {
   assert(game.players[2].hand.some((c) => c.id === lowTribute.id), 'lower tribute should go to second place');
 }
 
-function testAntiTributeNeedsSamePlayerDoubleBigJokers() {
-  const game = makeGame();
+function testTributeShapeSelection() {
+  // team = seat % 2, so team 0 = {seat 0, seat 2}, team 1 = {seat 1, seat 3}.
+
+  // 1st & 2nd same team (双上): no tribute at all.
+  let game = makeGame();
   game.previousFinishOrder = [0, 2, 1, 3];
+  game.handNumber = 2;
+  game.setupTribute();
+  assert.strictEqual(game.phase, 'playing', 'double-up should skip tribute entirely');
+  assert.strictEqual(game.currentTurn, 0, '1st place leads directly after a double-up');
+
+  // 1st & 3rd same team (双下): both the 2nd and 4th place players tribute.
+  game = makeGame();
+  game.previousFinishOrder = [0, 1, 2, 3];
+  game.handNumber = 2;
+  game.players[1].hand = [card('3', 'S', 0)];
+  game.players[3].hand = [card('4', 'S', 0)];
+  game.setupTribute();
+  assert.strictEqual(game.phase, 'tribute', '双下 should proceed to a tribute with two givers');
+  assert.strictEqual(game.pendingTributes.length, 2, '双下 needs both the 2nd and 4th place players to tribute');
+  assert.deepStrictEqual(game.pendingTributes.map((t) => t.from).sort(), [1, 3], '2nd and 4th place are the givers');
+  assert.deepStrictEqual(game.tributeRecipients, [0, 2], '1st and 3rd place (the winning team) are the recipients');
+
+  // 1st & 4th same team (单下): only the 4th place player tributes, to 1st place,
+  // even though they're teammates.
+  game = makeGame();
+  game.previousFinishOrder = [0, 1, 3, 2];
+  game.handNumber = 2;
+  game.players[2].hand = [card('4', 'S', 0)];
+  game.setupTribute();
+  assert.strictEqual(game.phase, 'tribute', '单下 should proceed to a single-giver tribute');
+  assert.strictEqual(game.pendingTributes.length, 1, '单下 only requires the 4th place player to tribute');
+  assert.strictEqual(game.pendingTributes[0].from, 2, '4th place is the sole giver');
+  assert.strictEqual(game.pendingTributes[0].to, 0, 'the tribute goes to 1st place');
+}
+
+function testAntiTributeCollectiveBigJokersAcrossGivers() {
+  // 双下 shape (1st & 3rd same team) so there are two givers to split jokers across.
+  let game = makeGame();
+  game.previousFinishOrder = [0, 1, 2, 3];
   game.handNumber = 2;
   game.players[1].hand = [card('BJ', 'J', 0), card('3', 'S', 0)];
   game.players[3].hand = [card('BJ', 'J', 1), card('4', 'S', 0)];
   game.setupTribute();
-  assert.strictEqual(game.phase, 'tribute', 'split big jokers across two players should not trigger anti-tribute');
+  assert.strictEqual(game.phase, 'playing', 'big jokers split one-each across the two givers should still trigger anti-tribute');
+  assert.strictEqual(game.currentTurn, 0, 'anti-tribute leads with 1st place');
 
+  game = makeGame();
+  game.previousFinishOrder = [0, 1, 2, 3];
+  game.handNumber = 2;
   game.players[1].hand = [card('BJ', 'J', 0), card('BJ', 'J', 1), card('3', 'S', 0)];
   game.players[3].hand = [card('4', 'S', 0)];
   game.setupTribute();
-  assert.strictEqual(game.phase, 'playing', 'one tribute player with two big jokers should trigger anti-tribute');
+  assert.strictEqual(game.phase, 'playing', 'one tribute player holding both big jokers should trigger anti-tribute');
+
+  game = makeGame();
+  game.previousFinishOrder = [0, 1, 2, 3];
+  game.handNumber = 2;
+  game.players[1].hand = [card('3', 'S', 0)];
+  game.players[3].hand = [card('4', 'S', 0)];
+  game.setupTribute();
+  assert.strictEqual(game.phase, 'tribute', 'no big jokers among the givers should proceed to a normal tribute');
 }
 
 function testTrickWinnerLeadsNextTrick() {
@@ -253,7 +302,7 @@ function testTrickWinnerLeadsNextTrick() {
   assert.strictEqual(game.nextLeadAfterTrick(), 2, "if the winner already finished, their teammate leads instead");
 }
 
-function testTributeReceiverLeadsAfterReturn() {
+function testTributeGiverLeadsAfterReturn() {
   const game = makeGame();
   game.currentLevel = '2';
   const tributeCard = card('A', 'S', 0);
@@ -265,7 +314,28 @@ function testTributeReceiverLeadsAfterReturn() {
   const entry = game.pendingReturns.find((item) => item.from === 0);
   entry.cardId = game.players[0].hand[0].id;
   game.applyReturns();
-  assert.strictEqual(game.currentTurn, 0, 'the tribute receiver should lead the first trick, not the tribute giver');
+  assert.strictEqual(game.currentTurn, 3, 'the tribute giver should lead the first trick, not the tribute receiver');
+}
+
+function testBiggerTributeGiverLeadsInDoubleTribute() {
+  const game = makeGame();
+  game.currentLevel = '2';
+  const lowTribute = card('10', 'S', 0);
+  const highTribute = card('A', 'S', 0);
+  game.players[1].hand = [lowTribute, card('3', 'S', 0)];
+  game.players[3].hand = [highTribute, card('4', 'S', 0)];
+  game.players[0].hand = [card('5', 'H', 0)];
+  game.players[2].hand = [card('6', 'H', 0)];
+  game.pendingTributes = [
+    { from: 1, to: null, cardId: lowTribute.id },
+    { from: 3, to: null, cardId: highTribute.id },
+  ];
+  game.tributeRecipients = [0, 2];
+
+  game.applyTributes();
+  for (const item of game.pendingReturns) item.cardId = game.players[item.from].hand[0].id;
+  game.applyReturns();
+  assert.strictEqual(game.currentTurn, 3, 'whoever gave the bigger tribute card leads, regardless of rank');
 }
 
 function testTributeGiverSeesResolvedRecipient() {
@@ -371,9 +441,11 @@ testPlayCardsRequiresChoiceOnAmbiguousPattern();
 testBombComparison();
 testHandSettlement();
 testDoubleTributeAssignment();
-testAntiTributeNeedsSamePlayerDoubleBigJokers();
+testTributeShapeSelection();
+testAntiTributeCollectiveBigJokersAcrossGivers();
 testTrickWinnerLeadsNextTrick();
-testTributeReceiverLeadsAfterReturn();
+testTributeGiverLeadsAfterReturn();
+testBiggerTributeGiverLeadsInDoubleTribute();
 testTributeGiverSeesResolvedRecipient();
 testHandOverRequiresAllPresentPlayersToConfirm();
 testAwayPlayerAutoPlaysOrPasses();
