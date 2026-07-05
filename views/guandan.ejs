@@ -160,6 +160,7 @@
     <button id="hostButton" class="ui large primary button">创建房间</button>
     <button id="joinButton" class="ui large secondary button">加入房间</button>
     <button id="spectateButton" class="ui large basic button">观战</button>
+    <button id="replayButton" class="ui large basic button">回放</button>
   </div>
 </div>
 
@@ -201,6 +202,48 @@
   </div>
   <div style="text-align: center; margin-top: 10px;">
     <button class="ui black button" onclick="exitSpectate()">离开观战</button>
+  </div>
+</div>
+
+<div id="guandanReplay" style="display: none;">
+  <div class="ui segment">
+    <h4 class="ui dividing header">回放信息</h4>
+    <div id="replayInfo" class="ui relaxed list"></div>
+  </div>
+
+  <div class="ui segment">
+    <div id="replayStepInfo" class="ui message"></div>
+    <div class="ui buttons">
+      <button class="ui button" id="replayFirstButton" onclick="replayFirst()">跳转到第一步</button>
+      <button class="ui button" id="replayPrevButton" onclick="replayPrev()">上一步</button>
+      <button class="ui button" id="replayNextButton" onclick="replayNext()">下一步</button>
+      <button class="ui button" id="replayLastButton" onclick="replayLast()">跳转到最后一步</button>
+    </div>
+  </div>
+
+  <div class="gd-layout">
+    <div>
+      <div class="ui segment">
+        <h4 class="ui dividing header">名次</h4>
+        <div id="replayFinishOrder" class="gd-finish"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="ui segment gd-table">
+        <h4 class="ui dividing header">上一手</h4>
+        <div id="replayLastPlay"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ui segment">
+    <h4 class="ui dividing header">所有玩家手牌</h4>
+    <div class="ui two column stackable grid" id="replayPlayersGrid"></div>
+  </div>
+
+  <div style="text-align: center; margin-top: 10px;">
+    <button class="ui black button" onclick="exitReplay()">离开回放</button>
   </div>
 </div>
 
@@ -302,6 +345,22 @@
   </div>
 </div>
 
+<div class="ui modal" id="replayModal">
+  <div class="header">观看回放</div>
+  <div class="content">
+    <div class="ui form">
+      <div class="field">
+        <label>回放编号</label>
+        <input type="text" id="replay-code-field" placeholder="例如 AB12CD">
+      </div>
+      <button onclick="beginReplay()" class="ui primary button">进入回放</button>
+    </div>
+  </div>
+  <div class="actions">
+    <div class="ui cancel button">关闭</div>
+  </div>
+</div>
+
 <div class="ui modal" id="playChoiceModal">
   <div class="header">这几张牌有多种合法出法，请选择</div>
   <div class="content">
@@ -325,11 +384,14 @@ var handOrder = [];
 var handOrderHandNumber = null;
 var spectatorState = null;
 var spectateSelectedSeat = null;
+var replayData = null;
+var replayStepIndex = 0;
 
 $(document).ready(function () {
   $('#hostButton').click(function() { $('#hostModal').modal('show'); });
   $('#joinButton').click(function() { $('#joinModal').modal('show'); });
   $('#spectateButton').click(function() { $('#spectateModal').modal('show'); });
+  $('#replayButton').click(function() { $('#replayModal').modal('show'); });
 });
 
 function escapeHtml(text) {
@@ -358,6 +420,19 @@ function exitSpectate() {
   spectatorState = null;
   spectateSelectedSeat = null;
   $('#guandanSpectate').hide();
+  $('#guandanLobby').show();
+}
+
+function beginReplay() {
+  var id = $('#replay-code-field').val();
+  if (!id || !id.trim()) { alert('请输入回放编号。'); return; }
+  socket.emit('requestReplay', { replayId: id.trim() });
+}
+
+function exitReplay() {
+  replayData = null;
+  replayStepIndex = 0;
+  $('#guandanReplay').hide();
   $('#guandanLobby').show();
 }
 
@@ -444,6 +519,21 @@ socket.on('spectateJoin', function (data) {
 socket.on('spectateState', function (data) {
   spectatorState = data;
   renderSpectate();
+});
+
+socket.on('replayData', function (data) {
+  if (!data) {
+    alert('回放不存在或编号错误。');
+    return;
+  }
+  $('#replayModal').modal('hide');
+  replayData = data;
+  replayStepIndex = 0;
+  $('#guandanLobby').hide();
+  $('#guandanSpectate').hide();
+  $('#guandanGame').hide();
+  $('#guandanReplay').show();
+  renderReplay();
 });
 
 socket.on('gameLog', function (data) {
@@ -920,6 +1010,90 @@ function renderSpectateHand() {
     groups[c.rank].push(c);
   });
   $('#spectateHand').html(order.map(function(r) { return renderStack(groups[r], false); }).join(''));
+}
+
+function replayStepTypeText(type) {
+  if (type === 'deal') return '发牌';
+  if (type === 'tribute') return '进贡';
+  if (type === 'return') return '还贡';
+  if (type === 'play') return '出牌';
+  if (type === 'pass') return '过牌';
+  if (type === 'handOver') return '本副结束';
+  return type;
+}
+
+function renderReplay() {
+  if (!replayData) return;
+  var step = replayData.steps[replayStepIndex];
+
+  $('#replayInfo').html(
+    '<div class="item">回放编号：<code>' + escapeHtml(replayData.replayId) + '</code></div>' +
+    '<div class="item">房间：<code>' + escapeHtml(replayData.code) + '</code>，第 ' + replayData.handNumber + ' 副，级牌：<b>' + escapeHtml(step.currentLevel) + '</b></div>' +
+    '<div class="item">队伍 1 等级：' + step.teamLevels[0] + '；队伍 2 等级：' + step.teamLevels[1] + '</div>'
+  );
+
+  $('#replayStepInfo').text(
+    '第 ' + (replayStepIndex + 1) + ' / ' + replayData.steps.length + ' 步（' + replayStepTypeText(step.type) + '）：' + step.description
+  );
+
+  if (!step.lastPlay) {
+    $('#replayLastPlay').html('<div class="ui grey text">当前无人压牌。</div>');
+  } else {
+    $('#replayLastPlay').html(
+      '<div><b>' + escapeHtml(step.lastPlay.username) + '</b>：' + escapeHtml(step.lastPlay.title) + '</div>' +
+      '<div>' + step.lastPlay.cards.map(function(card) { return renderCard(card, false); }).join('') + '</div>'
+    );
+  }
+
+  if (!step.finishOrder.length) {
+    $('#replayFinishOrder').html('<span class="ui grey text">暂无</span>');
+  } else {
+    $('#replayFinishOrder').html(step.finishOrder.map(function(item, index) {
+      return '<div class="ui label">' + (index + 1) + '. ' + escapeHtml(item.username) + ' / 队伍 ' + (item.team + 1) + '</div>';
+    }).join(' '));
+  }
+
+  $('#replayPlayersGrid').html(step.players.map(function(player) {
+    var groups = {};
+    var order = [];
+    (player.hand || []).forEach(function(c) {
+      if (!groups[c.rank]) { groups[c.rank] = []; order.push(c.rank); }
+      groups[c.rank].push(c);
+    });
+    var finish = player.finishedRank ? '<span class="ui red label">第 ' + player.finishedRank + ' 名</span>' : '';
+    return '<div class="column"><div class="ui segment gd-player">' +
+      '<h4 class="ui header">' + escapeHtml(player.username) + '</h4>' +
+      '<p>座位 ' + (player.seat + 1) + ' | 队伍 ' + (player.team + 1) + ' | 剩余 ' + (player.hand ? player.hand.length : 0) + ' 张 ' + finish + '</p>' +
+      '<div class="gd-hand">' + order.map(function(r) { return renderStack(groups[r], false); }).join('') + '</div>' +
+      '</div></div>';
+  }).join(''));
+
+  $('#replayFirstButton, #replayPrevButton').toggleClass('disabled', replayStepIndex === 0);
+  $('#replayNextButton, #replayLastButton').toggleClass('disabled', replayStepIndex === replayData.steps.length - 1);
+}
+
+function replayFirst() {
+  if (!replayData) return;
+  replayStepIndex = 0;
+  renderReplay();
+}
+
+function replayPrev() {
+  if (!replayData || replayStepIndex <= 0) return;
+  replayStepIndex--;
+  renderReplay();
+}
+
+function replayNext() {
+  if (!replayData || replayStepIndex >= replayData.steps.length - 1) return;
+  replayStepIndex++;
+  renderReplay();
+}
+
+function replayLast() {
+  if (!replayData) return;
+  replayStepIndex = replayData.steps.length - 1;
+  renderReplay();
 }
 </script>
 

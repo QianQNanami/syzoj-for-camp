@@ -21,6 +21,34 @@ RANK_TOTALS.SJ = 2;
 RANK_TOTALS.BJ = 2;
 const CARD_COUNTER_USER_ID = 615;
 
+// Completed-hand replays, keyed by a short random id shared out-of-band
+// (posted to the game log). In-memory only, like everything else about a
+// guandan room; capped so a long-running server doesn't leak memory.
+const MAX_REPLAYS = 500;
+const replayStore = new Map();
+
+function makeReplayId() {
+  let id;
+  do {
+    id = Math.random().toString(36).slice(2, 8).toUpperCase();
+  } while (replayStore.has(id));
+  return id;
+}
+
+function saveReplay(record) {
+  const id = makeReplayId();
+  replayStore.set(id, Object.assign({ replayId: id }, record));
+  if (replayStore.size > MAX_REPLAYS) {
+    const oldestKey = replayStore.keys().next().value;
+    replayStore.delete(oldestKey);
+  }
+  return id;
+}
+
+function getReplay(id) {
+  return replayStore.get(String(id || '').toUpperCase()) || null;
+}
+
 function nextRank(rank, steps) {
   let idx = BASE_RANKS.indexOf(rank);
   if (idx === -1) idx = 0;
@@ -408,6 +436,7 @@ class GuandanGame {
     this.roundInProgress = false;
     this.gameOver = false;
     this.playedCounts = {};
+    this.replaySteps = [];
   }
 
   getCode() {
@@ -481,6 +510,36 @@ class GuandanGame {
     this.emitSpectators('gameLog', { message });
   }
 
+  // Snapshots the full state of the current hand (every player's hand, the
+  // last play, finish order so far) for later replay. Called at every point
+  // the hand's visible state changes: the deal, tributes/returns, and every
+  // play or pass.
+  recordReplayStep(type, description) {
+    this.replaySteps.push({
+      type,
+      description,
+      currentLevel: this.currentLevel,
+      teamLevels: this.teamLevels.slice(),
+      lastPlay: this.lastPlay ? {
+        username: this.lastPlay.username,
+        cards: this.lastPlay.cards,
+        title: this.lastPlay.hand.title,
+      } : null,
+      finishOrder: this.finishOrder.map((seat) => ({
+        username: this.players[seat].username,
+        seat,
+        team: this.players[seat].team,
+      })),
+      players: this.players.map((p) => ({
+        username: p.username,
+        seat: p.seat,
+        team: p.team,
+        finishedRank: p.finishedRank,
+        hand: p.hand.map(cloneCard),
+      })),
+    });
+  }
+
   startGame() {
     if (this.players.length !== 4 || this.phase !== 'lobby') return false;
     this.firstLead = Math.floor(Math.random() * 4);
@@ -504,6 +563,7 @@ class GuandanGame {
     this.roundInProgress = true;
     this.playedCounts = {};
     for (const rank of COUNTER_RANK_ORDER) this.playedCounts[rank] = 0;
+    this.replaySteps = [];
     for (const player of this.players) {
       player.hand = [];
       player.finishedRank = null;
@@ -517,6 +577,7 @@ class GuandanGame {
     for (const player of this.players) GuandanRules.sortCards(player.hand, this.currentLevel);
 
     this.broadcastLog(`Hand ${this.handNumber} begins. Level card: ${this.currentLevel}.`);
+    this.recordReplayStep('deal', `第 ${this.handNumber} 副开始，级牌：${this.currentLevel}。`);
     if (this.handNumber > 1 && this.previousFinishOrder) {
       this.setupTribute();
     } else {
@@ -611,6 +672,7 @@ class GuandanGame {
       });
     }
 
+    const tributeDescs = [];
     for (const tribute of sortedTributes) {
       const from = this.players[tribute.from];
       const to = this.players[tribute.to];
@@ -619,10 +681,12 @@ class GuandanGame {
       this.pendingReturns.push({ from: tribute.to, to: tribute.from, cardId: null });
       this.lastTributeResults[tribute.from] = { toUsername: to.username, cardText: this.cardText(card) };
       this.broadcastLog(`${from.username} tributed ${this.cardText(card)} to ${to.username}.`);
+      tributeDescs.push(`${from.username} 进贡 ${this.cardText(card)} 给 ${to.username}`);
     }
     for (const player of this.players) GuandanRules.sortCards(player.hand, this.currentLevel);
     this.phase = 'return';
     this.currentTurn = this.pendingReturns[0].from;
+    this.recordReplayStep('tribute', tributeDescs.join('；'));
   }
 
   selectReturn(socketId, cardId) {
@@ -646,18 +710,22 @@ class GuandanGame {
   }
 
   applyReturns() {
+    const returnDescs = [];
     for (const item of this.pendingReturns) {
       const from = this.players[item.from];
       const to = this.players[item.to];
       const card = this.removeCard(from, item.cardId);
       to.hand.push(card);
       this.broadcastLog(`${from.username} returned ${this.cardText(card)} to ${to.username}.`);
+      returnDescs.push(`${from.username} 还贡 ${this.cardText(card)} 给 ${to.username}`);
     }
     for (const player of this.players) GuandanRules.sortCards(player.hand, this.currentLevel);
     this.phase = 'playing';
     // Whoever received the smaller tribute card leads (the sole recipient in the single-tribute case).
     this.currentTurn = this.tributeRecipients[this.tributeRecipients.length - 1];
     this.broadcastLog(`${this.players[this.currentTurn].username} leads after tribute.`);
+    returnDescs.push(`${this.players[this.currentTurn].username} 进贡后领出`);
+    this.recordReplayStep('return', returnDescs.join('；'));
   }
 
   playCards(socketId, cardIds, choice) {
@@ -716,6 +784,7 @@ class GuandanGame {
       hand,
     };
     this.passCount = 0;
+    const playDesc = `${player.username} 出了 ${hand.title}：${selected.map((card) => this.cardText(card)).join(' ')}`;
     this.broadcastLog(`${player.username} played ${hand.title}: ${selected.map((card) => this.cardText(card)).join(' ')}`);
 
     if (player.hand.length === 0) {
@@ -732,6 +801,7 @@ class GuandanGame {
         if (remaining) this.markFinished(remaining);
       }
     }
+    this.recordReplayStep('play', playDesc);
 
     if (this.finishOrder.length === 4) {
       this.endHand();
@@ -756,6 +826,7 @@ class GuandanGame {
 
     this.passCount += 1;
     this.broadcastLog(`${player.username} passed.`);
+    let passDesc = `${player.username} 选择过牌`;
     const lastPlayer = this.players[this.lastPlay.player];
     const requiredPasses = this.players.filter((p) => !p.finishedRank && p.seat !== lastPlayer.seat).length;
     if (this.passCount >= requiredPasses) {
@@ -764,9 +835,11 @@ class GuandanGame {
       this.passCount = 0;
       this.currentTurn = lead;
       this.broadcastLog(`${this.players[lead].username} leads the next trick.`);
+      passDesc += `，本墩结束，${this.players[lead].username} 领出下一墩`;
     } else {
       this.currentTurn = this.nextUnfinishedFrom(player.seat);
     }
+    this.recordReplayStep('pass', passDesc);
     this.rerender();
     return { ok: true };
   }
@@ -836,6 +909,16 @@ class GuandanGame {
     this.applyRating(winnerTeam, delta, resultType).catch((err) => {
       console.error(`Failed to update guandan rating: ${err.message}`);
     });
+
+    this.recordReplayStep('handOver', `队伍 ${winnerTeam + 1} 获胜（${this.resultText(resultType)}），等级 ${oldLevel} -> ${this.teamLevels[winnerTeam]}。`);
+    const replayId = saveReplay({
+      code: this.code,
+      handNumber: this.handNumber,
+      players: this.players.map((p) => ({ username: p.username, seat: p.seat, team: p.team })),
+      steps: this.replaySteps,
+    });
+    this.broadcastLog(`本副回放编号：${replayId}（可在主界面点击"回放"输入该编号观看）。`);
+
     this.rerender();
   }
 
@@ -1102,4 +1185,5 @@ module.exports = {
   GuandanGame,
   GuandanRules,
   BASE_RANKS,
+  getReplay,
 };

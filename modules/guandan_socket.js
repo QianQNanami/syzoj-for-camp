@@ -1,4 +1,4 @@
-const { GuandanGame } = require('../classes/guandan_game');
+const { GuandanGame, getReplay } = require('../classes/guandan_game');
 
 let rooms = [];
 
@@ -154,6 +154,11 @@ function initializeGuandan(io) {
 
     socket.on('spectatorExit', () => {
       for (const room of rooms) room.removeSpectatorBySocket(socket.id);
+    });
+
+    socket.on('requestReplay', (data) => {
+      const replay = data && getReplay(data.replayId);
+      socket.emit('replayData', replay || undefined);
     });
 
     socket.on('disconnect', () => {
