@@ -10,6 +10,16 @@ const LEVEL_ADVANCE = { double: 4, oneThree: 2, oneFour: 1 };
 const RATING_DELTA = { double: 200, oneThree: 100, oneFour: 50 };
 const AWAY_AUTO_ACTION_MS = 20000;
 
+// Card counter: how many of each rank exist in the two decks (8 = 2 decks *
+// 4 suits for a normal rank, 2 = 1 per deck for each joker), used to derive
+// how many of a rank are still unaccounted for from a viewer's perspective.
+const COUNTER_RANK_ORDER = [...BASE_RANKS, 'SJ', 'BJ'];
+const COUNTER_LABELS = { SJ: '小王', BJ: '大王' };
+const RANK_TOTALS = {};
+for (const rank of BASE_RANKS) RANK_TOTALS[rank] = 8;
+RANK_TOTALS.SJ = 2;
+RANK_TOTALS.BJ = 2;
+
 function nextRank(rank, steps) {
   let idx = BASE_RANKS.indexOf(rank);
   if (idx === -1) idx = 0;
@@ -396,6 +406,7 @@ class GuandanGame {
     this.logs = [];
     this.roundInProgress = false;
     this.gameOver = false;
+    this.playedCounts = {};
   }
 
   getCode() {
@@ -489,6 +500,8 @@ class GuandanGame {
     this.lastTributeResults = {};
     this.handOverReady = new Set();
     this.roundInProgress = true;
+    this.playedCounts = {};
+    for (const rank of COUNTER_RANK_ORDER) this.playedCounts[rank] = 0;
     for (const player of this.players) {
       player.hand = [];
       player.finishedRank = null;
@@ -692,6 +705,7 @@ class GuandanGame {
 
     if (!GuandanRules.canBeat(hand, this.lastPlay && this.lastPlay.hand)) return { ok: false, message: 'This play cannot beat the previous play.' };
 
+    for (const card of selected) this.playedCounts[card.rank] = (this.playedCounts[card.rank] || 0) + 1;
     for (const id of cardIds) this.removeCard(player, id);
     this.lastPlay = {
       player: player.seat,
@@ -973,6 +987,19 @@ class GuandanGame {
     }
   }
 
+  // Cards still unaccounted for from `viewer`'s perspective: total in both
+  // decks, minus what's already been played this hand, minus what's sitting
+  // in the viewer's own hand (which they can already see for themselves).
+  cardCounterFor(viewer) {
+    const ownCounts = {};
+    for (const card of viewer.hand) ownCounts[card.rank] = (ownCounts[card.rank] || 0) + 1;
+    return COUNTER_RANK_ORDER.map((rank) => ({
+      rank,
+      label: COUNTER_LABELS[rank] || rank,
+      remaining: RANK_TOTALS[rank] - (this.playedCounts[rank] || 0) - (ownCounts[rank] || 0),
+    }));
+  }
+
   stateFor(viewer) {
     const tribute = this.pendingTributes.find((item) => item.from === viewer.seat && !item.cardId);
     const returnCard = this.pendingReturns.find((item) => item.from === viewer.seat && !item.cardId);
@@ -986,6 +1013,7 @@ class GuandanGame {
       currentTurn: this.currentTurn,
       currentTurnName: this.currentTurn === null ? null : this.players[this.currentTurn].username,
       canAct: this.currentTurn === viewer.seat,
+      cardCounter: this.cardCounterFor(viewer),
       lastPlay: this.lastPlay ? {
         username: this.lastPlay.username,
         cards: this.lastPlay.cards,

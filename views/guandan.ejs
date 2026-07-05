@@ -111,6 +111,9 @@
 .gd-finish {
   min-height: 32px;
 }
+.gd-counter .label {
+  margin: 2px;
+}
 </style>
 
 <div id="guandanLobby" class="ui segment">
@@ -177,6 +180,11 @@
       <div class="ui segment">
         <h4 class="ui dividing header">名次</h4>
         <div id="finishOrder" class="gd-finish"></div>
+      </div>
+
+      <div class="ui segment">
+        <h4 class="ui dividing header">记牌器</h4>
+        <div id="cardCounter" class="gd-counter"></div>
       </div>
 
       <div class="ui segment">
@@ -464,8 +472,18 @@ function renderState() {
   renderPlayers();
   renderLastPlay();
   renderFinishOrder();
+  renderCardCounter();
   renderHand();
   renderActions();
+}
+
+function renderCardCounter() {
+  if (!currentState.cardCounter) { $('#cardCounter').html(''); return; }
+  $('#cardCounter').html(currentState.cardCounter.map(function(entry) {
+    var cls = entry.remaining <= 0 ? 'ui grey label' : 'ui label';
+    return '<div class="' + cls + '">' + escapeHtml(entry.label) +
+      '<div class="detail">' + Math.max(0, entry.remaining) + '</div></div>';
+  }).join(''));
 }
 
 function renderPhaseInfo() {
