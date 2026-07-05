@@ -11,7 +11,7 @@ app.get('/poker', async (req, res) => {
     }
     
     res.render('poker', {
-        title: "Texas Hold'em Poker"
+        title: "德州OI"
     });
   } catch (e) {
     syzoj.log(e);

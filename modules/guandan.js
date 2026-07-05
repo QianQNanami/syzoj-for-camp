@@ -9,7 +9,7 @@ app.get('/guandan', async (req, res) => {
     }
 
     res.render('guandan', {
-      title: '掼蛋'
+      title: '淮安OI'
     });
   } catch (e) {
     syzoj.log(e);
